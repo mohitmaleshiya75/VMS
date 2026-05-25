@@ -11,7 +11,7 @@ import { useDemoUser } from '@/lib/auth';
 import { usePaymentRecords } from '@/lib/payment-store';
 import { useWorkflowItems, type WorkflowItem } from '@/lib/workflow-store';
 import { money } from '@/lib/utils';
-import { ArrowLeft, FileText, Save } from 'lucide-react';
+import { ArrowLeft, FileText, RotateCcw, Save } from 'lucide-react';
 
 const paymentMethods = ['RTGS', 'NEFT', 'UPI', 'Cheque', 'Manual Bank Transfer'] as const;
 
@@ -165,6 +165,13 @@ export default function CreatePaymentPage() {
     setForm((current) => ({ ...current, ...patch }));
   }
 
+  function handleClearForm() {
+    setForm(emptyForm);
+    setSelectedInvoiceId(invoiceId);
+    clearDraft(paymentDraftKey);
+    toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!selectedItem || (selectedItem.paymentStatus !== 'Ready' && selectedItem.status !== 'Queued for Payment')) {
@@ -307,27 +314,31 @@ export default function CreatePaymentPage() {
             <InputField label="Payment gateway" value={form.paymentGateway} onChange={(value) => patchForm({ paymentGateway: value })} required type="text" />
             <label className="text-sm text-slate-300">
               Remittance note
-              <textarea value={form.remittanceNote} onChange={(event) => patchForm({ remittanceNote: event.target.value })} className="mt-2 h-28 w-full rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-400/30" />
+              <textarea
+                value={form.remittanceNote}
+                onChange={(event) => patchForm({ remittanceNote: event.target.value })}
+                className="mt-2 h-28 w-full rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm outline-none focus:border-cyan-400/30"
+              />
             </label>
             <label className="text-sm text-slate-300">
               Remarks
-              <textarea value={form.remarks} onChange={(event) => patchForm({ remarks: event.target.value })} className="mt-2 h-24 w-full rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-400/30" />
+              <textarea
+                value={form.remarks}
+                onChange={(event) => patchForm({ remarks: event.target.value })}
+                className="mt-2 h-28 w-full rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm outline-none focus:border-cyan-400/30"
+              />
             </label>
-            <div className="flex flex-wrap gap-3">
-              <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><Save size={16} /> Save payment</button>
-              <Link href="/payments" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 transition hover:bg-white/10"><FileText size={16} /> Cancel</Link>
-            </div>
           </div>
         </div>
-      </form>
-
-      <Panel title="Payment readiness" subtitle="Payments created from approved invoices retain strong linkage to the original AP workflow.">
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4"><div className="text-xs uppercase tracking-[0.18em] text-slate-500">Workflow items ready</div><div className="mt-2 text-2xl font-semibold text-white">{existingPending}</div></div>
-          <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4"><div className="text-xs uppercase tracking-[0.18em] text-slate-500">Selected invoice</div><div className="mt-2 text-2xl font-semibold text-white">{selectedItem?.invoiceNumber ?? 'None'}</div></div>
-          <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4"><div className="text-xs uppercase tracking-[0.18em] text-slate-500">Vendor</div><div className="mt-2 text-2xl font-semibold text-white">{selectedItem?.vendorName ?? 'Choose invoice'}</div></div>
+        <div className="flex items-center justify-end gap-3">
+          <button type="button" onClick={handleClearForm} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10">
+            <RotateCcw size={16} /> Reset form
+          </button>
+          <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-6 py-3 text-sm font-medium text-white transition hover:bg-cyan-600">
+            <Save size={16} /> Create payment
+          </button>
         </div>
-      </Panel>
+      </form>
     </div>
   );
 }

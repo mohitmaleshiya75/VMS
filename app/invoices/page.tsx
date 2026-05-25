@@ -12,8 +12,8 @@ import { clearDraft, readDraft, useFormDraftAutoSave, writeDraft } from '@/lib/f
 import { approvalLevelFor, useWorkflowItems, type WorkflowItem } from '@/lib/workflow-store';
 import { usePurchaseOrders } from '@/lib/purchase-order-store';
 import { money } from '@/lib/utils';
-import type { Vendor, PurchaseOrder } from '@/lib/types';
-import { AlertTriangle, CheckCircle2, Download, Eye, FileImage, FileText, ListChecks, RotateCcw, Save, Search, Upload, X, XCircle } from 'lucide-react';
+import type { PurchaseOrder, Vendor } from '@/lib/types';
+import { AlertTriangle, CheckCircle2, ChevronDown, Download, Eye, FileImage, FileText, ListChecks, RotateCcw, Save, Search, Upload, X, XCircle } from 'lucide-react';
 
 type IntakeMode = 'OCR' | 'Manual';
 type InvoiceView = 'create' | 'register';
@@ -648,12 +648,105 @@ export default function InvoicesPage() {
   const [activeView, setActiveView] = useState<InvoiceView>('create');
   const [mode, setMode] = useState<IntakeMode>('OCR');
   const [draft, setDraft] = useState<InvoiceDraft>(defaultDraft);
+
+  // Date and Search Filter States
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [singleDate, setSingleDate] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState('');
+  const [isQuickFilterDropdownOpen, setIsQuickFilterDropdownOpen] = useState(false);
+
   const invoiceDraftKey = useMemo(() => `invoice:auto-save:create`, []);
+
+  // Filter Helper Functions
+  const resetFilters = () => {
+    setFromDate('');
+    setToDate('');
+    setSingleDate('');
+    setSearchTerm('');
+    setActiveFilter('');
+    setStatusFilter('All');
+    setSourceFilter('All');
+    setPage(1);
+  };
+
+  const applyTodayFilter = () => {
+    const date = new Date().toISOString().split('T')[0];
+    setFromDate(date);
+    setToDate(date);
+    setSingleDate('');
+    setActiveFilter('today');
+    setPage(1);
+  };
+
+  const applyThisWeekFilter = () => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day; // Adjust to Monday
+    startOfWeek.setDate(now.getDate() + diff);
+    
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+    setFromDate(startOfWeek.toISOString().split('T')[0]);
+    setToDate(endOfWeek.toISOString().split('T')[0]);
+    setSingleDate('');
+    setActiveFilter('this_week');
+    setPage(1);
+  };
+
+  const applyThisMonthFilter = () => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    setFromDate(startOfMonth.toISOString().split('T')[0]);
+    setToDate(endOfMonth.toISOString().split('T')[0]);
+    setSingleDate('');
+    setActiveFilter('this_month');
+    setPage(1);
+  };
+
+  const applyLastMonthFilter = () => {
+    const now = new Date();
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    setFromDate(startOfLastMonth.toISOString().split('T')[0]);
+    setToDate(endOfLastMonth.toISOString().split('T')[0]);
+    setSingleDate('');
+    setActiveFilter('last_month');
+    setPage(1);
+  };
+
+  const applyFinancialYearFilter = () => {
+    const now = new Date();
+    const month = now.getMonth(); // 0-indexed (0=Jan, 3=Apr)
+    const year = now.getFullYear();
+    // Indian FY starts April 1st. 
+    // If current month is Jan-Mar (0,1,2), the FY started April last year.
+    const startYear = month < 3 ? year - 1 : year;
+
+    setFromDate(`${startYear}-04-01`);
+    setToDate(`${startYear + 1}-03-31`);
+    setSingleDate('');
+    setActiveFilter('fy');
+    setPage(1);
+  };
+
+  const quickFilterOptions = useMemo(() => [
+    { id: 'today', label: 'Today', fn: applyTodayFilter },
+    { id: 'this_week', label: 'This Week', fn: applyThisWeekFilter },
+    { id: 'this_month', label: 'This Month', fn: applyThisMonthFilter },
+    { id: 'last_month', label: 'Last Month', fn: applyLastMonthFilter },
+    { id: 'fy', label: 'Indian FY', fn: applyFinancialYearFilter },
+  ], [applyTodayFilter, applyThisWeekFilter, applyThisMonthFilter, applyLastMonthFilter, applyFinancialYearFilter]);
 
   const [result, setResult] = useState<InvoiceValidationResult | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [ocrDiscrepancies, setOcrDiscrepancies] = useState<string[]>([]);
-  const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sourceFilter, setSourceFilter] = useState('All');
   const [page, setPage] = useState(1);
@@ -666,7 +759,7 @@ export default function InvoicesPage() {
     arrivalDate: index < 3 ? today : item.updatedAt,
     intakeMode: item.lastActionBy.toLowerCase().includes('ocr') ? 'OCR' : 'Manual',
   })), [items]);
-  const todayRows = rows.filter((row) => row.arrivalDate === today);
+  const todayRows = rows.filter((row) => row.arrivalDate?.startsWith(today));
 
   useEffect(() => {
     // Restore auto-saved invoice form state.
@@ -692,20 +785,34 @@ export default function InvoicesPage() {
     draft: { draft, activeView, mode, ocrDiscrepancies },
   });
 
-  const filteredRows = useMemo(() => {
+  const filteredData = useMemo(() => {
+    return rows.filter((item) => {
+      const itemDate = new Date(item.invoiceDate || (item as any).poDate || new Date());
+      
+      // Calendar & Quick Filter Logic
+      const matchesDate = singleDate
+        ? itemDate.toISOString().slice(0, 10) === singleDate
+        : (!fromDate || itemDate >= new Date(fromDate)) &&
+          (!toDate || itemDate <= new Date(toDate + 'T23:59:59'));
 
-    const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      const byStatus = statusFilter === 'All' || row.status === statusFilter || row.matchStatus === statusFilter || row.paymentStatus === statusFilter;
-      const bySource = sourceFilter === 'All' || row.intakeMode === sourceFilter;
-      const phrase = `${row.invoiceNumber} ${row.vendorName} ${row.poNumber} ${row.grnReference} ${row.deliveryChallanNumber} ${row.status} ${row.matchStatus}`.toLowerCase();
-      return byStatus && bySource && (!q || phrase.includes(q));
+      // Search Logic
+      const search = searchTerm.toLowerCase().trim();
+      const matchesSearch =
+        (item.vendorName || '').toLowerCase().includes(search) ||
+        (item.poNumber || '').toLowerCase().includes(search) ||
+        (item.invoiceNumber || '').toLowerCase().includes(search);
+
+      // Business Logic (Status & Source)
+      const byStatus = statusFilter === 'All' || item.status === statusFilter || item.matchStatus === statusFilter || item.paymentStatus === statusFilter;
+      const bySource = sourceFilter === 'All' || item.intakeMode === sourceFilter;
+
+      return matchesDate && matchesSearch && byStatus && bySource;
     });
-  }, [rows, query, statusFilter, sourceFilter]);
+  }, [rows, fromDate, toDate, singleDate, searchTerm, statusFilter, sourceFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const pageRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pageRows = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const vendorOptions = useMemo(() => ['Select vendor', ...vendors.map(v => v.displayName || v.legalName)], [vendors]);
   const poOptions = useMemo(() => ['Select PO', ...purchaseOrders.map(p => p.poNumber)], [purchaseOrders]);
@@ -893,6 +1000,15 @@ export default function InvoicesPage() {
     toast({ type: 'warning', title: 'Exception flagged', description: `${draft.invoiceNumber || 'Invoice'} stays in AP review until the fields are corrected.` });
   }
 
+  function handleClearForm() {
+    setDraft(defaultDraft);
+    setResult(null);
+    setFieldErrors({});
+    setOcrDiscrepancies([]);
+    clearDraft(invoiceDraftKey);
+    toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
+  }
+
   return (
     <div className="space-y-5">
       <Panel
@@ -964,6 +1080,7 @@ export default function InvoicesPage() {
             <button type="button" onClick={validateCurrent} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-white/10"><CheckCircle2 size={16} /> Validate</button>
             <button type="button" onClick={flagException} className="inline-flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200 hover:bg-amber-400/15"><AlertTriangle size={16} /> Flag exception</button>
             <button type="button" onClick={() => setPreviewDraft(draft)} className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-cyan-200 hover:bg-cyan-400/15"><Eye size={16} /> Preview invoice</button>
+            <button type="button" onClick={handleClearForm} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 hover:bg-white/10"><RotateCcw size={16} /> Clear All</button>
             <button className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-200"><Save size={16} /> Submit workflow</button>
           </div>
           {result && <ValidationResult result={result} />}
@@ -980,15 +1097,100 @@ export default function InvoicesPage() {
         </div>
       </Panel>
 
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border border-white/5 bg-slate-900/50 p-4 shadow-sm mb-4">
+        {/* Search Section */}
+        <div className="flex-1 min-w-[240px] space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Search Section</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+            <input 
+              value={searchTerm} 
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} 
+              placeholder="Search invoice / PO / vendor" 
+              className="w-full rounded-lg border border-white/10 bg-slate-950/50 py-2 pl-10 pr-3 text-sm outline-none focus:border-cyan-400/30 text-slate-200 transition-all placeholder:text-slate-600"
+            />
+          </div>
+        </div>
+
+        {/* Calendar Filter Section */}
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Calendar Filter</label>
+          <div className="flex items-center gap-2">
+            <input 
+              type="date" 
+              value={singleDate} 
+              onChange={(e) => { setSingleDate(e.target.value); setFromDate(''); setToDate(''); setActiveFilter(''); setPage(1); }}
+              className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
+              title="Specific Date"
+            />
+            <div className="h-4 w-px bg-white/10 mx-1" />
+            <input 
+              type="date" 
+              value={fromDate} 
+              onChange={(e) => { setFromDate(e.target.value); setSingleDate(''); setActiveFilter(''); setPage(1); }}
+              className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
+              placeholder="From"
+            />
+            <input 
+              type="date" 
+              value={toDate} 
+              onChange={(e) => { setToDate(e.target.value); setSingleDate(''); setActiveFilter(''); setPage(1); }}
+              className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
+              placeholder="To"
+            />
+          </div>
+        </div>
+
+        {/* Quick Filter Dropdown */}
+        <div className="space-y-1.5 relative">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Quick Filter List</label>
+          <button
+            type="button"
+            onClick={() => setIsQuickFilterDropdownOpen(!isQuickFilterDropdownOpen)}
+            className="flex items-center justify-between w-full min-w-[120px] rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-200 transition-all hover:bg-white/5 focus:border-cyan-400/30"
+          >
+            {activeFilter ? quickFilterOptions.find(opt => opt.id === activeFilter)?.label : 'Select Filter'}
+            <ChevronDown size={16} className={`transition-transform ${isQuickFilterDropdownOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isQuickFilterDropdownOpen && (
+            <div className="absolute z-10 mt-1 w-full rounded-lg border border-white/10 bg-slate-900/95 shadow-lg overflow-hidden">
+              {quickFilterOptions.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => {
+                    f.fn();
+                    setIsQuickFilterDropdownOpen(false); // Close dropdown after selection
+                  }}
+                  className={`block w-full text-left px-3 py-2 text-sm font-medium transition-all ${activeFilter === f.id ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Reset Section */}
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Reset</label>
+          <button 
+            type="button"
+            onClick={resetFilters}
+            className="flex items-center justify-center p-2.5 rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all"
+            title="Reset Filters"
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+      </div>
+
       <Panel
-        title={`Invoice history (${filteredRows.length})`}
+        title={`Showing ${filteredData.length} invoices`}
         subtitle="Search and filter all invoice history. Status updates stay synced across matching, approvals, and payments."
         action={
           <div className="flex flex-wrap gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search invoice, vendor, PO..." className="w-72 rounded-lg border border-white/10 bg-slate-950/50 py-2 pl-9 pr-3 text-sm outline-none focus:border-cyan-400/30" />
-            </div>
             <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none">
               {['All', 'Submitted', 'Matched', 'Variance', 'On Hold', 'Queued for Payment', 'Paid', 'Rejected'].map((status) => <option key={status}>{status}</option>)}
             </select>
@@ -998,13 +1200,73 @@ export default function InvoicesPage() {
           </div>
         }
       >
-        <div className="overflow-auto">
-          <table className="min-w-[1280px] w-full border-separate border-spacing-0 text-left text-sm">
-            <thead><tr className="text-xs uppercase tracking-[0.14em] text-slate-500"><th className="border-b border-white/10 px-3 py-3">Invoice</th><th className="border-b border-white/10 px-3 py-3">Vendor</th><th className="border-b border-white/10 px-3 py-3">Documents</th><th className="border-b border-white/10 px-3 py-3">Amount</th><th className="border-b border-white/10 px-3 py-3">Route</th><th className="border-b border-white/10 px-3 py-3">Match</th><th className="border-b border-white/10 px-3 py-3">Approval</th><th className="border-b border-white/10 px-3 py-3">Payment</th><th className="border-b border-white/10 px-3 py-3">Action</th></tr></thead>
-            <tbody>{pageRows.map((row) => <tr key={row.id} className="hover:bg-white/[0.03]"><td className="border-b border-white/5 px-3 py-4 font-medium text-white">{row.invoiceNumber}<div className="text-xs text-slate-500">{row.invoiceDate} | {row.intakeMode}</div></td><td className="border-b border-white/5 px-3 py-4 text-slate-300">{row.vendorName}</td><td className="border-b border-white/5 px-3 py-4 text-slate-300">{row.poNumber}</td><td className="border-b border-white/5 px-3 py-4 text-slate-200">{money(row.invoiceAmount)}<div className="text-xs text-slate-500">GST {money(row.gstAmount)}</div></td><td className="border-b border-white/5 px-3 py-4"><Badge tone={row.approvalLevel === 'L1' ? 'cyan' : row.approvalLevel === 'L2' ? 'violet' : 'amber'}>{row.approvalLevel}</Badge></td><td className="border-b border-white/5 px-3 py-4"><Badge tone={row.matchStatus === 'Matched' ? 'emerald' : row.matchStatus === 'Variance' ? 'amber' : 'slate'}>{row.matchStatus}</Badge></td><td className="border-b border-white/5 px-3 py-4"><Badge tone={badgeForStatus(row.status)}>{row.status}</Badge></td><td className="border-b border-white/5 px-3 py-4"><Badge tone={row.paymentStatus === 'Ready' || row.paymentStatus === 'Paid' ? 'emerald' : row.paymentStatus === 'Hold' ? 'amber' : row.paymentStatus === 'Failed' ? 'rose' : 'slate'}>{row.paymentStatus}</Badge></td><td className="border-b border-white/5 px-3 py-4"><button onClick={() => setPreviewItem(row)} className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200">Preview</button></td></tr>)}</tbody>
+        <div className="overflow-auto max-h-[650px] rounded-lg border border-white/5 custom-scrollbar">
+          <table className="min-w-[1280px] w-full border-separate border-spacing-0 text-left text-sm relative">
+            <thead className="sticky top-0 z-20 bg-slate-900 shadow-sm">
+              <tr className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md">Invoice Details</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md">Vendor</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md">Purchase Order</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md text-right">Invoice Value</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md text-center">Match Quality</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md text-center">Workflow Status</th>
+                <th className="border-b border-white/10 bg-slate-900/95 px-4 py-4 backdrop-blur-md text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-24 text-center">
+                    <div className="inline-flex flex-col items-center justify-center rounded-2xl border border-white/5 bg-slate-950/20 px-16 py-10">
+                      <div className="mb-4 rounded-full bg-white/5 p-4 text-slate-600"><FileText size={32} strokeWidth={1.5} /></div>
+                      <h4 className="text-base font-semibold text-slate-300">No invoices found</h4>
+                      <p className="mt-1 text-sm text-slate-500 italic">Try changing filters or search</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row) => (
+                  <tr key={row.id} className="group transition-colors hover:bg-white/[0.04] even:bg-white/[0.02]">
+                    <td className="px-4 py-4">
+                      <div className="font-bold tracking-tight text-white tabular-nums">{row.invoiceNumber}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                        <span className="rounded bg-white/5 px-1.5 py-0.5">{row.intakeMode}</span>
+                        <span>•</span>
+                        <span className="tabular-nums whitespace-nowrap font-bold text-slate-400">{row.invoiceDate ? new Date(row.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-5">
+                      <div className="text-sm font-semibold text-slate-200">{row.vendorName}</div>
+                      <div className="text-[11px] text-slate-500 font-medium">VND-REF-{row.id.slice(-4).toUpperCase()}</div>
+                    </td>
+                    <td className="px-4 py-5 text-slate-400 font-mono text-xs">{row.poNumber}</td>
+                    <td className="px-4 py-5 text-right">
+                      <div className="font-bold text-slate-100 tabular-nums">{money(row.invoiceAmount)}</div>
+                      <div className="text-[10px] font-semibold text-slate-500 tabular-nums uppercase">GST {money(row.gstAmount)}</div>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <Badge tone={row.matchStatus === 'Matched' ? 'emerald' : row.matchStatus === 'Variance' ? 'amber' : 'slate'}>
+                        {row.matchStatus}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <Badge tone={badgeForStatus(row.status)}>{row.status}</Badge>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <button 
+                        onClick={() => setPreviewItem(row)} 
+                        className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3.5 py-2 text-xs font-bold text-cyan-300 transition hover:bg-cyan-400/15"
+                      >
+                        <Eye size={14} /> Preview
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
           </table>
         </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
           <div className="text-sm text-slate-400">Page {currentPage} of {totalPages}</div>
           <div className="flex gap-2">
             <button disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 disabled:opacity-40">Previous</button>

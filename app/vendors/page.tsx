@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast';
 import { useDemoUser } from '@/lib/auth';
 import { useVendors } from '@/lib/vendor-store';
 import type { Vendor } from '@/lib/types';
-import { Building2, CheckCircle2, Eye, FileCheck2, RefreshCw, Search, ShieldAlert, Upload } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, Eye, FileCheck2, RefreshCw, RotateCcw, Search, ShieldAlert, Upload } from 'lucide-react';
 
 type VendorDraft = {
   legalName: string;
@@ -269,6 +269,11 @@ export default function VendorsPage() {
     setDraft((current) => ({ ...current, ...patch }));
   }
 
+  function handleClearForm() {
+    setDraft(emptyDraft);
+    toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!canCreate) {
@@ -397,9 +402,12 @@ export default function VendorsPage() {
               Remarks
               <textarea value={draft.remarks} onChange={(event) => patchDraft({ remarks: event.target.value })} className="mt-2 min-h-[92px] w-full rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm outline-none focus:border-cyan-400/30" />
             </label>
-            <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200">
-              <FileCheck2 size={16} /> Submit to Finance Head
-            </button>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" onClick={handleClearForm} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"><RotateCcw size={16} /> Clear All</button>
+              <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200">
+                <FileCheck2 size={16} /> Submit to Finance Head
+              </button>
+            </div>
           </form>
         </Panel>
       )}

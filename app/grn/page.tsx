@@ -1,3 +1,4 @@
+
 'use client';
 
 import { FormEvent, useMemo, useState, useEffect } from 'react';
@@ -9,7 +10,7 @@ import { usePurchaseOrders } from '@/lib/purchase-order-store';
 import { useVendors } from '@/lib/vendor-store';
 import { money } from '@/lib/utils';
 import type { GoodsReceipt, PurchaseOrder, Vendor } from '@/lib/types';
-import { CheckCircle2, FileText, ListChecks, Plus, RefreshCw, Save, Search, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, ListChecks, Plus, RefreshCw, RotateCcw, Save, Search, Trash2, XCircle } from 'lucide-react';
 
 type GrnView = 'create' | 'list';
 
@@ -258,6 +259,15 @@ export default function GrnPage() {
     setActiveView('list');
   }
 
+  function handleClearForm() {
+    setDraft(emptyDraft());
+    setEditingId(undefined);
+    setErrors([]);
+    setFieldErrors({});
+    localStorage.removeItem('procureflow-grn-draft');
+    toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
+  }
+
   function edit(item: GoodsReceipt) {
     setDraft(cloneDraft(item));
     setEditingId(item.id);
@@ -341,6 +351,7 @@ export default function GrnPage() {
 
             <div className="flex flex-wrap gap-3">
               <button type="button" onClick={validateDraft} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"><CheckCircle2 size={16} /> Validate GRN</button>
+              <button type="button" onClick={handleClearForm} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"><RotateCcw size={16} /> Clear All</button>
               <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><Save size={16} /> {editingId ? 'Update GRN' : 'Save GRN'}</button>
               {editingId && <button type="button" onClick={() => { setEditingId(undefined); setDraft(emptyDraft()); setErrors([]); setFieldErrors({}); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"><XCircle size={16} /> Cancel edit</button>}
             </div>
