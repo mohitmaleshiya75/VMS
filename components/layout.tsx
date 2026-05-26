@@ -55,7 +55,7 @@ const navGroups: NavGroup[] = [
     label: 'Documents',
     icon: FileText,
     children: [
-      { href: '/purchase-orders', label: 'Purchase orders', icon: ClipboardList },
+      { href: '/purchase-orders', label: 'Purchase Orders', icon: ClipboardList },
       { href: '/invoices', label: 'Invoices', icon: FileText },
       { href: '/matching', label: '3-Way Matching', icon: GitBranch },
     ],
@@ -65,9 +65,9 @@ const navGroups: NavGroup[] = [
     label: 'Approvals and payment',
     icon: ListChecks,
     children: [
-      { href: '/approvals', label: 'Approval queue', icon: ListChecks },
-      { href: '/payments', label: 'Payment queue', icon: WalletCards },
-      { href: '/payments/create', label: 'Create payment', icon: PlusCircle },
+      { href: '/approvals', label: 'Approval Queue', icon: ListChecks },
+      { href: '/payments', label: 'Payment Queue', icon: WalletCards },
+      { href: '/payments/create', label: 'Create Payment', icon: PlusCircle },
     ],
   },
   {

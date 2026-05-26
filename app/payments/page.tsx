@@ -155,7 +155,7 @@ export default function PaymentsPage() {
       <Panel
         title="Payment workspace"
         subtitle="Finance Head creates payment instructions only for invoices already approved by L1, L2, or L3."
-        action={<Link href="/payments/create" className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><Plus size={16} />Create payment</Link>}
+        action={<Link href="/payments/create" className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><Plus size={16} />Create Payment</Link>}
       >
         <div className="grid gap-3 md:grid-cols-4">
           <MetricCard label="Approved ready" value={readyRows.length} icon={<WalletCards size={18} />} tone="cyan" />
@@ -197,7 +197,7 @@ export default function PaymentsPage() {
       )}
 
       <Panel
-        title={`Approved payment queue (${filteredRows.length})`}
+        title={`Approved payment Queue (${filteredRows.length})`}
         subtitle="Filter and paginate invoices approved by L1/L2/L3 before creating or executing payments."
         action={
           <div className="flex flex-wrap gap-2">

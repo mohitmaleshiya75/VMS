@@ -552,7 +552,7 @@ export default function CreatePaymentPage() {
             <RotateCcw size={16} /> Reset form
           </button>
           <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-6 py-3 text-sm font-medium text-white transition hover:bg-cyan-600">
-            <Save size={16} /> Create payment
+            <Save size={16} /> Create Payment
           </button>
         </div>
       </form>

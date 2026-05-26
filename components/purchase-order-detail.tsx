@@ -22,7 +22,7 @@ export function PurchaseOrderDetail({ po, actions = true }: { po: PurchaseOrder;
       <InvoiceSummarySheet po={po} />
       <Panel
         title={`${po.poNumber} details`}
-        subtitle="Matching-ready purchase order record for PO, GRN, and invoice comparison."
+        subtitle="Matching-ready purchase Order record for PO, GRN, and invoice comparison."
         action={actions && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"><Printer size={16} /> Print</button>

@@ -83,7 +83,7 @@ function ApprovalDetail({ item, onClose }: { item: WorkflowItem; onClose: () => 
                   <table className="min-w-[640px] w-full border-separate border-spacing-0 text-left text-sm">
                     <thead><tr className="text-xs uppercase tracking-[0.14em] text-slate-500"><th className="border-b border-white/10 px-3 py-2">Document</th><th className="border-b border-white/10 px-3 py-2">Reference</th><th className="border-b border-white/10 px-3 py-2">Amount</th><th className="border-b border-white/10 px-3 py-2">Qty</th></tr></thead>
                     <tbody>
-                      <tr><td className="border-b border-white/5 px-3 py-3 text-slate-300">Purchase order</td><td className="border-b border-white/5 px-3 py-3 text-white">{item.poNumber}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{money(item.poAmount)}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{item.poQty}</td></tr>
+                      <tr><td className="border-b border-white/5 px-3 py-3 text-slate-300">Purchase Order</td><td className="border-b border-white/5 px-3 py-3 text-white">{item.poNumber}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{money(item.poAmount)}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{item.poQty}</td></tr>
                       <tr><td className="border-b border-white/5 px-3 py-3 text-slate-300">GRN / challan</td><td className="border-b border-white/5 px-3 py-3 text-white">{item.grnReference} / {item.deliveryChallanNumber}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">-</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{item.grnQty}</td></tr>
                       <tr><td className="border-b border-white/5 px-3 py-3 text-slate-300">Invoice</td><td className="border-b border-white/5 px-3 py-3 text-white">{item.invoiceNumber}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{money(item.invoiceAmount)}</td><td className="border-b border-white/5 px-3 py-3 text-slate-300">{item.grnQty}</td></tr>
                     </tbody>
@@ -117,7 +117,7 @@ function ApprovalDetail({ item, onClose }: { item: WorkflowItem; onClose: () => 
                   <DetailField label="Review required" value={result.status === 'Variance Detected' ? 'Yes' : 'No'} />
                   {item.paymentStatus === 'Ready' && (
                     <div className="mt-3 flex items-center gap-2">
-                      <Link href={`/payments/create?invoiceId=${encodeURIComponent(item.id)}`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"><Wallet size={14} />Create payment</Link>
+                      <Link href={`/payments/create?invoiceId=${encodeURIComponent(item.id)}`} className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"><Wallet size={14} />Create Payment</Link>
                     </div>
                   )}
                 </div>
