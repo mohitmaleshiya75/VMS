@@ -12,6 +12,14 @@ export type ApprovalDecision = 'Submitted' | 'Approved' | 'Rejected' | 'On Hold'
 export type PaymentMethod = 'RTGS' | 'NEFT' | 'UPI' | 'Cheque' | 'Manual Bank Transfer';
 export type PaymentStatus = 'Queued' | 'Processing' | 'Success' | 'Failed' | 'Hold' | 'Pending' | 'Ready' | 'Cancelled';
 export type PaymentPriority = 'Low' | 'Medium' | 'High';
+export type InstallmentSchedule = {
+  id: string;
+  installmentNo: number;
+  dueDate: string;
+  amount: number;
+  status: 'Pending' | 'Paid' | 'Overdue';
+};
+
 export type ApprovalHistoryRecord = { id: string; invoiceId: string; invoiceNumber: string; vendorId: string; vendorName: string; approvalLevel: ApprovalLevel; decision: 'Approved' | 'Rejected' | 'On Hold' | 'Submitted'; decisionBy: string; decisionRole: string; comments: string; timestamp: string; };
 export type PaymentAudit = { id: string; paymentId: string; invoiceId: string; action: 'Created' | 'Authorized' | 'Executed' | 'Failed' | 'Held' | 'Reconciled' | 'Synced'; actor: string; role: string; timestamp: string; notes: string; previousStatus: PaymentStatus; newStatus: PaymentStatus; };
 export type PaymentNotification = { id: string; paymentId: string; invoiceId: string; title: string; description: string; recipient: string; channel: 'Email' | 'SMS' | 'UPI' | 'ERP'; status: 'Pending' | 'Sent' | 'Failed'; createdAt: string; deliveredAt: string; actionUrl: string; };

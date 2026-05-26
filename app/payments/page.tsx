@@ -152,9 +152,58 @@ export default function PaymentsPage() {
 
       <Panel title={`Payment ledger (${records.length})`} subtitle="Created payment instructions remain searchable from the payment records store.">
         <div className="overflow-auto">
-          <table className="min-w-[1050px] w-full border-separate border-spacing-0 text-left text-sm">
-            <thead><tr className="text-xs uppercase tracking-[0.14em] text-slate-500"><th className="border-b border-white/10 px-3 py-3">Payment</th><th className="border-b border-white/10 px-3 py-3">Invoice</th><th className="border-b border-white/10 px-3 py-3">Vendor</th><th className="border-b border-white/10 px-3 py-3">Amount</th><th className="border-b border-white/10 px-3 py-3">Method</th><th className="border-b border-white/10 px-3 py-3">Status</th><th className="border-b border-white/10 px-3 py-3">Action</th></tr></thead>
-            <tbody>{records.slice(0, 8).map((record) => <tr key={record.id} className="hover:bg-white/[0.03]"><td className="border-b border-white/5 px-3 py-4 font-medium text-white">{record.id}</td><td className="border-b border-white/5 px-3 py-4 text-slate-300">{record.invoiceNumber}</td><td className="border-b border-white/5 px-3 py-4 text-slate-300">{record.vendorName}</td><td className="border-b border-white/5 px-3 py-4 text-slate-200">{money(record.amount)}</td><td className="border-b border-white/5 px-3 py-4"><Badge tone="violet">{record.paymentMode}</Badge></td><td className="border-b border-white/5 px-3 py-4"><Badge tone={paymentTone(record.status)}>{record.status}</Badge></td><td className="border-b border-white/5 px-3 py-4"><Link href={`/payments/create?invoiceId=${encodeURIComponent(record.invoiceId)}`} className="rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-400/15">Open</Link></td></tr>)}</tbody>
+          <table className="min-w-[1280px] w-full border-separate border-spacing-0 text-left text-sm">
+            <thead>
+              <tr className="text-[10px] uppercase font-bold tracking-widest text-slate-500">
+                <th className="border-b border-white/10 px-3 py-3">Payment ID</th>
+                <th className="border-b border-white/10 px-3 py-3">Reference</th>
+                <th className="border-b border-white/10 px-3 py-3 text-right">Total Liability</th>
+                <th className="border-b border-white/10 px-3 py-3 text-center">Strategy</th>
+                <th className="border-b border-white/10 px-3 py-3 text-center">Tenure</th>
+                <th className="border-b border-white/10 px-3 py-3">Next Due</th>
+                <th className="border-b border-white/10 px-3 py-3 text-right">Balance</th>
+                <th className="border-b border-white/10 px-3 py-3 text-center">Status</th>
+                <th className="border-b border-white/10 px-3 py-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.slice(0, 12).map((record) => {
+                const isInstallment = (record as any).paymentType === 'Installment';
+                const installments = (record as any).installments || [];
+                const totalLiability = isInstallment ? (record as any).totalInstallmentAmount || record.amount : record.amount;
+                
+                const paidCount = installments.filter((i: any) => i.status === 'Paid').length;
+                const nextDueItem = installments.find((i: any) => i.status === 'Pending' || i.status === 'Overdue');
+                const balance = installments.filter((i: any) => i.status !== 'Paid').reduce((sum: number, i: any) => sum + i.amount, 0);
+
+                return (
+                  <tr key={record.id} className="hover:bg-white/[0.03] group">
+                    <td className="border-b border-white/5 px-3 py-4 font-mono text-xs text-slate-400">{record.id}</td>
+                    <td className="border-b border-white/5 px-3 py-4">
+                      <div className="font-semibold text-white">{record.invoiceNumber}</div>
+                      <div className="text-[10px] text-slate-500 font-medium truncate max-w-[150px]">{record.vendorName}</div>
+                    </td>
+                    <td className="border-b border-white/5 px-3 py-4 text-right tabular-nums font-bold text-slate-200">{money(totalLiability)}</td>
+                    <td className="border-b border-white/5 px-3 py-4 text-center">
+                      <Badge tone={isInstallment ? 'cyan' : 'emerald'}>{isInstallment ? 'Installment' : 'Full'}</Badge>
+                    </td>
+                    <td className="border-b border-white/5 px-3 py-4 text-center text-xs text-slate-400 font-medium">
+                      {isInstallment ? `${paidCount} / ${installments.length}` : '1 / 1'}
+                    </td>
+                    <td className="border-b border-white/5 px-3 py-4 text-xs font-mono text-slate-300">
+                      {nextDueItem?.dueDate ? new Date(nextDueItem.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : (isInstallment ? '-' : 'N/A')}
+                    </td>
+                    <td className="border-b border-white/5 px-3 py-4 text-right tabular-nums font-semibold text-slate-400">
+                      {isInstallment ? money(balance) : money(0)}
+                    </td>
+                    <td className="border-b border-white/5 px-3 py-4 text-center"><Badge tone={paymentTone(record.status)}>{record.status}</Badge></td>
+                    <td className="border-b border-white/5 px-3 py-4 text-right">
+                      <Link href={`/payments/create?invoiceId=${encodeURIComponent(record.invoiceId)}`} className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-xs font-bold text-cyan-200 opacity-80 group-hover:opacity-100 transition">View</Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
         </div>
       </Panel>

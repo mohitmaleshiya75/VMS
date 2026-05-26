@@ -219,13 +219,13 @@ export default function PurchaseOrdersPage() {
     setActiveFilter('fy');
   };
 
-  const quickFilterOptions = [
+  const quickFilterOptions = useMemo(() => [
     { id: 'today', label: 'Today', fn: applyTodayFilter },
     { id: 'this_week', label: 'This Week', fn: applyThisWeekFilter },
     { id: 'this_month', label: 'This Month', fn: applyThisMonthFilter },
     { id: 'last_month', label: 'Last Month', fn: applyLastMonthFilter },
     { id: 'fy', label: 'Indian FY', fn: applyFinancialYearFilter },
-  ];
+  ], [applyTodayFilter, applyThisWeekFilter, applyThisMonthFilter, applyLastMonthFilter, applyFinancialYearFilter]);
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [statusFilter, setStatusFilter] = useState('All');

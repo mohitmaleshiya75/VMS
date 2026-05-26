@@ -10,12 +10,21 @@ import { useToast } from '@/components/toast';
 import { useDemoUser } from '@/lib/auth';
 import { usePaymentRecords } from '@/lib/payment-store';
 import { useWorkflowItems, type WorkflowItem } from '@/lib/workflow-store';
-import { money } from '@/lib/utils';
-import { ArrowLeft, FileText, RotateCcw, Save } from 'lucide-react';
+import { money, cn } from '@/lib/utils';
+import type { InstallmentSchedule } from '@/lib/types';
+import { ArrowLeft, CalendarDays, FileText, RotateCcw, Save, WalletCards } from 'lucide-react';
 
 const paymentMethods = ['RTGS', 'NEFT', 'UPI', 'Cheque', 'Manual Bank Transfer'] as const;
 
 type PaymentMethod = (typeof paymentMethods)[number];
+
+type InstallmentEntry = {
+  installmentNo: number;
+  dueDate: string;
+  amount: number;
+  status: 'Pending' | 'Paid' | 'Overdue';
+  remainingBalance: number;
+};
 
 type PaymentForm = {
   invoiceId: string;
@@ -46,7 +55,13 @@ type PaymentForm = {
   priority: 'Low' | 'Medium' | 'High';
   paymentGateway: string;
   remarks: string;
+  paymentType: 'Full' | 'Installment';
+  totalInstallmentAmount: number;
+  installmentDuration: number;
+  installmentStartDate: string;
+  installmentFrequency: 'Monthly' | 'Quarterly';
   status: 'Pending' | 'Ready' | 'Processing' | 'Success' | 'Failed' | 'Hold' | 'Cancelled';
+  installments: InstallmentEntry[];
 };
 
 const emptyForm: PaymentForm = {
@@ -78,7 +93,13 @@ const emptyForm: PaymentForm = {
   priority: 'Medium',
   paymentGateway: 'Core Banking',
   remarks: '',
+  paymentType: 'Full',
+  totalInstallmentAmount: 0,
+  installmentDuration: 3,
+  installmentStartDate: new Date().toISOString().slice(0, 10),
+  installmentFrequency: 'Monthly',
   status: 'Pending',
+  installments: [],
 };
 
 function InputField({ label, value, onChange, type = 'text', required = true, help }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean; help?: string }) {
@@ -113,6 +134,54 @@ export default function CreatePaymentPage() {
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedInvoiceId), [items, selectedInvoiceId]);
   const existingPending = items.filter((item) => item.paymentStatus === 'Ready' || item.status === 'Queued for Payment').length;
 
+  const installmentBreakdown = useMemo(() => {
+    const total = Number(form.totalInstallmentAmount || 0);
+    const months = Number(form.installmentDuration || 1);
+
+    if (form.paymentType !== 'Installment' || months <= 0 || !form.installmentStartDate) return null;
+
+    const perInstallment = Number((total / months).toFixed(2));
+
+    const schedule: InstallmentEntry[] = [];
+    const start = new Date(form.installmentStartDate);
+    let currentBalance = total;
+
+    for (let i = 0; i < months; i++) {
+      const dueDate = new Date(start);
+      const monthsToAdd = form.installmentFrequency === 'Monthly' ? i : i * 3;
+      dueDate.setMonth(start.getMonth() + monthsToAdd);
+
+      const isLast = i === months - 1;
+      // Last installment adjusts for rounding discrepancies to ensure ledger balance
+      const amount = isLast 
+        ? Number(currentBalance.toFixed(2))
+        : perInstallment;
+
+      currentBalance -= amount;
+
+      schedule.push({ 
+        installmentNo: i + 1, 
+        dueDate: dueDate.toISOString().slice(0, 10), 
+        amount, 
+        status: 'Pending',
+        remainingBalance: Number(Math.max(0, currentBalance).toFixed(2))
+      });
+    }
+
+    return { perInstallment, schedule };
+  }, [form.paymentType, form.totalInstallmentAmount, form.installmentDuration, form.installmentStartDate, form.installmentFrequency]);
+
+  const installmentStats = useMemo(() => {
+    if (!installmentBreakdown) return null;
+    const { schedule } = installmentBreakdown;
+    const totalPaid = schedule.filter(i => i.status === 'Paid').reduce((sum, i) => sum + i.amount, 0);
+    const pendingAmount = schedule.filter(i => i.status === 'Pending').reduce((sum, i) => sum + i.amount, 0);
+    const remainingBalance = schedule.filter(i => i.status !== 'Paid').reduce((sum, i) => sum + i.amount, 0);
+    const nextDue = schedule.find(i => i.status === 'Pending' || i.status === 'Overdue')?.dueDate;
+
+    return { totalPaid, pendingAmount, remainingBalance, nextDue };
+  }, [installmentBreakdown]);
+
   useEffect(() => {
     // Restore auto-saved payment draft.
     const saved = readDraft<{ form: PaymentForm; selectedInvoiceId: string }>(paymentDraftKey);
@@ -135,6 +204,22 @@ export default function CreatePaymentPage() {
 
   useEffect(() => {
     if (selectedItem) {
+      // Determine payment structure and installment details
+      const isInstallment = selectedItem.paymentStructure === 'installment';
+      const paymentType = isInstallment ? 'Installment' : 'Full';
+      const firstInstallmentAmount = isInstallment && selectedItem.installmentSchedule && selectedItem.installmentSchedule.length > 0
+        ? selectedItem.installmentSchedule[0].amount
+        : selectedItem.invoiceAmount;
+
+      // Transform InstallmentSchedule[] to InstallmentEntry[] (add remainingBalance)
+      const installmentEntries: InstallmentEntry[] = (selectedItem.installmentSchedule ?? []).map((inst, idx, arr) => ({
+        installmentNo: inst.installmentNo,
+        dueDate: inst.dueDate,
+        amount: inst.amount,
+        status: inst.status,
+        remainingBalance: arr.slice(idx + 1).reduce((sum, i) => sum + i.amount, 0),
+      }));
+
       setForm((current) => ({
         ...current,
         invoiceId: selectedItem.id,
@@ -142,17 +227,37 @@ export default function CreatePaymentPage() {
         vendorId: `VND-${selectedItem.id}`,
         vendorName: selectedItem.vendorName,
         beneficiaryName: selectedItem.vendorName,
-        amount: selectedItem.invoiceAmount,
+        amount: firstInstallmentAmount,
+        totalInstallmentAmount: selectedItem.invoiceAmount,
         paymentMode: selectedItem.paymentMode,
-        remittanceNote: `Settlement for ${selectedItem.invoiceNumber}`,
+        remittanceNote: `Settlement for ${selectedItem.invoiceNumber}${isInstallment ? ' - Installment 1' : ''}`,
         priority: selectedItem.invoiceAmount > 100000 ? 'High' : selectedItem.invoiceAmount > 10000 ? 'Medium' : 'Low',
         paymentGateway: selectedItem.paymentMode === 'UPI' ? 'NPCI UPI' : selectedItem.paymentMode === 'Manual Bank Transfer' ? 'Bank Transfer' : selectedItem.paymentMode,
-        netPaid: selectedItem.invoiceAmount - current.taxDeduction - current.bankCharge,
+        netPaid: firstInstallmentAmount - current.taxDeduction - current.bankCharge,
+        paymentType,
+        installmentDuration: selectedItem.installmentMonths ?? 1,
+        installmentStartDate: selectedItem.installmentStartDate ?? new Date().toISOString().slice(0, 10),
+        installments: installmentEntries,
       }));
     } else {
       setForm(emptyForm);
     }
   }, [selectedItem]);
+
+  useEffect(() => {
+    // Sync primary amount field with installment engine, or restore to total if Full.
+    if (form.paymentType === 'Installment') {
+      setForm(current => ({
+        ...current,
+        amount: installmentBreakdown?.perInstallment || 0
+      }));
+    } else {
+      setForm(current => ({
+        ...current,
+        amount: current.totalInstallmentAmount
+      }));
+    }
+  }, [form.paymentType, installmentBreakdown?.perInstallment, form.totalInstallmentAmount]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -181,6 +286,30 @@ export default function CreatePaymentPage() {
     if (!form.invoiceNumber || !form.vendorName || form.amount <= 0 || !form.paymentMode || !form.bankName || !form.ifsc) {
       toast({ type: 'error', title: 'Missing details', description: 'Complete invoice, vendor, bank, and payment fields before creating the payment.' });
       return;
+    }
+
+    // STEP 8: Installment Validation Rules
+    if (form.paymentType === 'Installment') {
+      if (form.totalInstallmentAmount <= 0) {
+        toast({ type: 'error', title: 'Invalid total amount', description: 'Total payable amount is required and must be greater than zero.' });
+        return;
+      }
+      if (form.installmentDuration <= 0) {
+        toast({ type: 'error', title: 'Invalid duration', description: 'Installment duration must be at least 1 month.' });
+        return;
+      }
+      if (form.installmentDuration > 60) {
+        toast({ type: 'error', title: 'Tenure limit exceeded', description: 'Installment duration cannot exceed 60 months (5 years).' });
+        return;
+      }
+      if (!form.installmentStartDate) {
+        toast({ type: 'error', title: 'Missing start date', description: 'The first installment due date is required.' });
+        return;
+      }
+      if (!installmentBreakdown || installmentBreakdown.perInstallment <= 0) {
+        toast({ type: 'error', title: 'Calculation error', description: 'Calculated installment amount must be greater than zero. Please check amount and duration.' });
+        return;
+      }
     }
 
     create({
@@ -213,8 +342,11 @@ export default function CreatePaymentPage() {
       holdReason: form.holdReason,
       priority: form.priority,
       paymentGateway: form.paymentGateway,
+      paymentType: form.paymentType,
+      totalInstallmentAmount: form.totalInstallmentAmount,
+      installments: form.paymentType === 'Installment' ? installmentBreakdown?.schedule || [] : [],
       remarks: form.remarks,
-    });
+    } as any);
 
     if (selectedItem) {
       update(selectedItem.id, { status: 'Queued for Payment', paymentStatus: 'Ready' }, user.role);
@@ -258,6 +390,60 @@ export default function CreatePaymentPage() {
             </div>
           </div>
         </Panel>
+
+        {form.paymentType === 'Installment' && form.installments && form.installments.length > 0 && (
+          <Panel title="Installment Payment Schedule" subtitle={`Total ${form.installments.length} installments, Current: #1 of ${form.installments.length}`}>
+            <div className="grid gap-4 lg:grid-cols-4">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-widest text-slate-500">Total amount</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{money(form.totalInstallmentAmount)}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-widest text-slate-500">Current installment</div>
+                <div className="mt-2 text-2xl font-semibold text-cyan-200">#{form.installments[0]?.installmentNo} - {money(form.installments[0]?.amount ?? 0)}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-widest text-slate-500">Due date</div>
+                <div className="mt-2 text-2xl font-semibold text-white">{form.installments[0]?.dueDate || '-'}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="text-xs uppercase tracking-widest text-slate-500">Remaining balance</div>
+                <div className="mt-2 text-2xl font-semibold text-amber-200">{money(form.installments.slice(1).reduce((sum, i) => sum + i.amount, 0))}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest text-slate-400">Installment</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest text-slate-400">Due Date</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-widest text-slate-400">Amount</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-widest text-slate-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.installments.map((inst, idx) => (
+                    <tr key={idx} className="border-b border-white/5 hover:bg-white/[0.02]">
+                      <td className="px-4 py-3 text-slate-300">#{inst.installmentNo}</td>
+                      <td className="px-4 py-3 text-slate-300">{inst.dueDate}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-cyan-200">{money(inst.amount)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-block rounded px-3 py-1 text-xs font-semibold ${
+                          inst.status === 'Paid' ? 'bg-emerald-500/20 text-emerald-200' :
+                          inst.status === 'Overdue' ? 'bg-red-500/20 text-red-200' :
+                          'bg-slate-600/50 text-slate-200'
+                        }`}>
+                          {inst.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        )}
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4 space-y-4">
             <div className="grid gap-3 md:grid-cols-2">

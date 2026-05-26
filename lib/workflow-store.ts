@@ -3,6 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 
 export type WorkflowStatus = 'Submitted' | 'Approved' | 'Rejected' | 'On Hold' | 'Queued for Payment' | 'Paid' | 'Payment Failed';
 
+export type InstallmentSchedule = {
+  id: string;
+  installmentNo: number;
+  dueDate: string;
+  amount: number;
+  status: 'Pending' | 'Paid' | 'Overdue';
+};
+
 export type WorkflowItem = {
   id: string;
   vendorId: string;
@@ -27,6 +35,11 @@ export type WorkflowItem = {
   erpSyncStatus: 'Pending' | 'Synced';
   lastActionBy: string;
   updatedAt: string;
+  paymentStructure?: 'full' | 'installment';
+  installmentMonths?: number;
+  monthlyInstallmentAmount?: number;
+  installmentStartDate?: string;
+  installmentSchedule?: InstallmentSchedule[];
 };
 
 export const workflowKey = 'procureflow-workflow-items';

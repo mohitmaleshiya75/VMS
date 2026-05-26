@@ -11,8 +11,8 @@ import { clearDraft, readDraft, useFormDraftAutoSave, writeDraft } from '@/lib/f
 
 import { approvalLevelFor, useWorkflowItems, type WorkflowItem } from '@/lib/workflow-store';
 import { usePurchaseOrders } from '@/lib/purchase-order-store';
-import { money } from '@/lib/utils';
-import type { PurchaseOrder, Vendor } from '@/lib/types';
+import { money, generateInstallmentSchedule } from '@/lib/utils';
+import type { PurchaseOrder, Vendor, InstallmentSchedule } from '@/lib/types';
 import { AlertTriangle, CheckCircle2, ChevronDown, Download, Eye, FileImage, FileText, ListChecks, RotateCcw, Save, Search, Upload, X, XCircle } from 'lucide-react';
 
 type IntakeMode = 'OCR' | 'Manual';
@@ -649,6 +649,12 @@ export default function InvoicesPage() {
   const [mode, setMode] = useState<IntakeMode>('OCR');
   const [draft, setDraft] = useState<InvoiceDraft>(defaultDraft);
 
+  // Payment Structure and Installment States
+  const [paymentStructure, setPaymentStructure] = useState<'full' | 'installment'>('full');
+  const [installmentMonths, setInstallmentMonths] = useState(12);
+  const [installmentStartDate, setInstallmentStartDate] = useState(today);
+  const [installmentSchedule, setInstallmentSchedule] = useState<InstallmentSchedule[]>([]);
+
   // Date and Search Filter States
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -768,6 +774,10 @@ export default function InvoicesPage() {
       activeView: InvoiceView;
       mode: IntakeMode;
       ocrDiscrepancies: string[];
+      paymentStructure: 'full' | 'installment';
+      installmentMonths: number;
+      installmentStartDate: string;
+      installmentSchedule: InstallmentSchedule[];
     }>(invoiceDraftKey);
 
     if (!saved) return;
@@ -776,14 +786,29 @@ export default function InvoicesPage() {
     setActiveView(saved.activeView);
     setMode(saved.mode);
     setOcrDiscrepancies(saved.ocrDiscrepancies ?? []);
+    setPaymentStructure(saved.paymentStructure ?? 'full');
+    setInstallmentMonths(saved.installmentMonths ?? 12);
+    setInstallmentStartDate(saved.installmentStartDate ?? today);
+    setInstallmentSchedule(saved.installmentSchedule ?? []);
   }, [invoiceDraftKey]);
 
   useFormDraftAutoSave({
     draftKey: invoiceDraftKey,
     enabled: true,
     debounceMs: 450,
-    draft: { draft, activeView, mode, ocrDiscrepancies },
+    draft: { draft, activeView, mode, ocrDiscrepancies, paymentStructure, installmentMonths, installmentStartDate, installmentSchedule },
   });
+
+  // Auto-generate installment schedule when payment structure or amounts change
+  useEffect(() => {
+    if (paymentStructure !== 'installment') return;
+
+    const grossAmount = parseFloat(draft.grossAmount || '0') || 0;
+    if (grossAmount <= 0 || installmentMonths <= 0) return;
+
+    const schedule = generateInstallmentSchedule(grossAmount, installmentMonths, installmentStartDate, 'Monthly');
+    setInstallmentSchedule(schedule);
+  }, [paymentStructure, draft.grossAmount, installmentMonths, installmentStartDate]);
 
   const filteredData = useMemo(() => {
     return rows.filter((item) => {
@@ -979,6 +1004,11 @@ export default function InvoicesPage() {
       erpSyncStatus: 'Pending',
       lastActionBy: `${mode} Invoice Intake (Validated)`,
       updatedAt: today,
+      paymentStructure,
+      installmentMonths: paymentStructure === 'installment' ? installmentMonths : undefined,
+      monthlyInstallmentAmount: paymentStructure === 'installment' ? parseFloat((manualDraft.grossAmount / installmentMonths).toFixed(2)) : undefined,
+      installmentStartDate: paymentStructure === 'installment' ? installmentStartDate : undefined,
+      installmentSchedule: paymentStructure === 'installment' ? installmentSchedule : undefined,
     };
     save([nextItem, ...items]);
     toast({
@@ -1075,6 +1105,88 @@ export default function InvoicesPage() {
               </div>
             </section>
           ))}
+
+          {/* Payment Structure Section */}
+          <section className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            <h3 className="text-sm font-semibold text-white mb-4">Payment Structure</h3>
+            <div className="flex gap-3 mb-6">
+              {(['full', 'installment'] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setPaymentStructure(type)}
+                  className={`flex-1 rounded-xl border-2 px-4 py-3 font-semibold transition-all ${
+                    paymentStructure === type
+                      ? 'border-cyan-400 bg-cyan-400/10 text-cyan-200'
+                      : 'border-white/10 bg-white/[0.02] text-slate-400 hover:bg-white/5'
+                  }`}
+                >
+                  {type === 'full' ? 'Full Payment' : 'Installment Payment'}
+                </button>
+              ))}
+            </div>
+
+            {paymentStructure === 'installment' && (
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Duration (months)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={installmentMonths}
+                      onChange={(e) => setInstallmentMonths(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400/30 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Start Date</label>
+                    <input
+                      type="date"
+                      value={installmentStartDate}
+                      onChange={(e) => setInstallmentStartDate(e.target.value)}
+                      className="mt-2 w-full rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400/30 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Per Month Amount</label>
+                    <div className="mt-2 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm font-semibold text-cyan-200">
+                      {money(parseFloat(draft.grossAmount || '0') / installmentMonths)}
+                    </div>
+                  </div>
+                </div>
+
+                {installmentSchedule.length > 0 && (
+                  <div className="rounded-lg border border-white/10 bg-slate-950/50 p-3">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Installment Schedule</h4>
+                    <div className="overflow-auto">
+                      <table className="min-w-full text-xs">
+                        <thead>
+                          <tr className="text-slate-500">
+                            <th className="text-left px-2 py-2 font-semibold">Installment</th>
+                            <th className="text-left px-2 py-2 font-semibold">Due Date</th>
+                            <th className="text-right px-2 py-2 font-semibold">Amount</th>
+                            <th className="text-center px-2 py-2 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {installmentSchedule.map((inst) => (
+                            <tr key={inst.id} className="border-t border-white/5 hover:bg-white/[0.02]">
+                              <td className="px-2 py-2 text-slate-300">#{inst.installmentNo}</td>
+                              <td className="px-2 py-2 text-slate-300">{inst.dueDate}</td>
+                              <td className="px-2 py-2 text-right text-cyan-200 font-semibold">{money(inst.amount)}</td>
+                              <td className="px-2 py-2 text-center"><span className="inline-block rounded px-2 py-1 text-xs font-semibold bg-slate-700 text-slate-200">{inst.status}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
 
           <div className="flex flex-wrap gap-3">
             <button type="button" onClick={validateCurrent} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 hover:bg-white/10"><CheckCircle2 size={16} /> Validate</button>
