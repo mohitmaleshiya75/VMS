@@ -32,6 +32,7 @@ export default function PaymentsPage() {
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [paymentStructureFilter, setPaymentStructureFilter] = useState('all');
   const [page, setPage] = useState(1);
 
   const rows = useMemo(
@@ -75,10 +76,18 @@ export default function PaymentsPage() {
     const q = query.trim().toLowerCase();
     return rows.filter((item) => {
       const byStatus = statusFilter === 'All' || item.paymentStatus === statusFilter || item.status === statusFilter;
-      const phrase = `${item.invoiceNumber} ${item.vendorName} ${item.paymentMode} ${item.status} ${item.paymentStatus}`.toLowerCase();
-      return byStatus && (!q || phrase.includes(q));
+      
+      const structureMatch = paymentStructureFilter === 'all' || 
+                             (paymentStructureFilter === 'full' && (item.paymentStructure === 'full' || !item.paymentStructure)) ||
+                             (paymentStructureFilter === 'installment' && item.paymentStructure === 'installment');
+
+      // Combined Search Logic: Invoice #, Vendor, Ref ID, and UTR Number from schedule
+      const utrs = (item.installmentSchedule || []).map(s => s.utrNumber).filter(Boolean).join(' ');
+      const searchFields = `${item.invoiceNumber} ${item.vendorName} ${item.id} ${utrs} ${item.paymentMode} ${item.status} ${item.paymentStatus}`.toLowerCase();
+
+      return byStatus && structureMatch && (!q || searchFields.includes(q));
     });
-  }, [query, rows, statusFilter]);
+  }, [query, rows, statusFilter, paymentStructureFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -194,7 +203,12 @@ export default function PaymentsPage() {
           <div className="flex flex-wrap gap-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-              <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Search invoice, vendor..." className="w-72 rounded-lg border border-white/10 bg-slate-950/50 py-2 pl-9 pr-3 text-sm outline-none focus:border-cyan-400/30" />
+              <input 
+                value={query} 
+                onChange={(event) => { setQuery(event.target.value); setPage(1); }} 
+                placeholder="Search invoice, vendor, ref or UTR..." 
+                className="w-80 rounded-xl border border-white/10 bg-slate-950/50 py-2 pl-10 pr-3 text-sm outline-none transition-all focus:border-cyan-400/40 focus:bg-slate-950/80" 
+              />
             </div>
             <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} className="rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none">
               {['All', 'Ready', 'Paid', 'Failed', 'Hold', 'Queued for Payment', 'Payment Failed'].map((status) => <option key={status}>{status}</option>)}
@@ -202,9 +216,34 @@ export default function PaymentsPage() {
           </div>
         }
       >
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6 border-b border-white/5 pb-5">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'all', label: 'All Payments' },
+              { id: 'full', label: 'Full Payment' },
+              { id: 'installment', label: 'Installment Payment' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => { setPaymentStructureFilter(opt.id); setPage(1); }}
+                className={cn(
+                  "rounded-xl px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all border",
+                  paymentStructureFilter === opt.id
+                    ? "bg-cyan-400/10 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(34,211,238,0.1)]"
+                    : "bg-slate-900/40 border-white/5 text-slate-400 hover:bg-white/5 hover:border-white/10"
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
+            Showing <span className="text-slate-200">{filteredRows.length}</span> payments
+          </div>
+        </div>
         <div className="overflow-auto">
           <table className="min-w-[1180px] w-full border-separate border-spacing-0 text-left text-sm">
-            <thead><tr className="text-xs uppercase tracking-[0.14em] text-slate-500"><th className="border-b border-white/10 px-3 py-3">Invoice</th><th className="border-b border-white/10 px-3 py-3">Vendor</th><th className="border-b border-white/10 px-3 py-3">Amount</th><th className="border-b border-white/10 px-3 py-3">Mode</th><th className="border-b border-white/10 px-3 py-3">Approval status</th><th className="border-b border-white/10 px-3 py-3">Payment status</th><th className="border-b border-white/10 px-3 py-3">ERP</th><th className="border-b border-white/10 px-3 py-3">Action</th></tr></thead>
+            <thead><tr className="text-xs uppercase tracking-[0.14em] text-slate-500"><th className="border-b border-white/10 px-3 py-3">Invoice</th><th className="border-b border-white/10 px-3 py-3">Vendor</th><th className="border-b border-white/10 px-3 py-3">Amount</th><th className="border-b border-white/10 px-3 py-3 text-center">Structure</th><th className="border-b border-white/10 px-3 py-3">Mode</th><th className="border-b border-white/10 px-3 py-3">Approval status</th><th className="border-b border-white/10 px-3 py-3">Payment status</th><th className="border-b border-white/10 px-3 py-3">ERP</th><th className="border-b border-white/10 px-3 py-3">Action</th></tr></thead>
             <tbody>
               {pageRows.map((item) => {
                 const nextInst = item.paymentStructure === 'installment' 
@@ -216,6 +255,11 @@ export default function PaymentsPage() {
                     <td className="border-b border-white/5 px-3 py-4 font-medium text-white">{item.invoiceNumber}<div className="text-xs text-slate-500">{item.approvalLevel} approved route</div></td>
                     <td className="border-b border-white/5 px-3 py-4 text-slate-300">{item.vendorName}</td>
                     <td className="border-b border-white/5 px-3 py-4 text-slate-200">{money(item.invoiceAmount)}<div className="text-xs text-slate-500">GST {money(item.gstAmount)}</div></td>
+                    <td className="border-b border-white/5 px-3 py-4 text-center">
+                      <Badge tone={item.paymentStructure === 'installment' ? 'violet' : 'cyan'}>
+                        {item.paymentStructure === 'installment' ? 'Installment Payment' : 'Full Payment'}
+                      </Badge>
+                    </td>
                     <td className="border-b border-white/5 px-3 py-4"><Badge tone="violet">{item.paymentMode}</Badge></td>
                     <td className="border-b border-white/5 px-3 py-4"><Badge tone={item.status === 'Payment Failed' ? 'rose' : item.status === 'On Hold' ? 'amber' : 'emerald'}>{item.status}</Badge></td>
                     <td className="border-b border-white/5 px-3 py-4"><Badge tone={paymentTone(item.paymentStatus)}>{item.paymentStatus}</Badge></td>
@@ -233,7 +277,7 @@ export default function PaymentsPage() {
                   </tr>
                 );
               })}
-              {pageRows.length === 0 && <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-500">No approved payment items match this filter.</td></tr>}
+              {pageRows.length === 0 && <tr><td colSpan={9} className="px-3 py-10 text-center text-slate-500">No payments found for selected filter</td></tr>}
             </tbody>
           </table>
         </div>
