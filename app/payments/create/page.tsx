@@ -18,14 +18,6 @@ const paymentMethods = ['RTGS', 'NEFT', 'UPI', 'Cheque', 'Manual Bank Transfer']
 
 type PaymentMethod = (typeof paymentMethods)[number];
 
-type InstallmentEntry = {
-  installmentNo: number;
-  dueDate: string;
-  amount: number;
-  status: 'Pending' | 'Paid' | 'Overdue';
-  remainingBalance: number;
-};
-
 type PaymentForm = {
   invoiceId: string;
   invoiceNumber: string;
@@ -61,7 +53,7 @@ type PaymentForm = {
   installmentStartDate: string;
   installmentFrequency: 'Monthly' | 'Quarterly';
   status: 'Pending' | 'Ready' | 'Processing' | 'Success' | 'Failed' | 'Hold' | 'Cancelled';
-  installments: InstallmentEntry[];
+  installments: InstallmentSchedule[];
 };
 
 const emptyForm: PaymentForm = {
@@ -118,6 +110,15 @@ function InputField({ label, value, onChange, type = 'text', required = true, he
   );
 }
 
+function SummaryMetric({ label, value, tone = 'slate', bold = false }: { label: string; value: string | number; tone?: 'slate' | 'emerald' | 'amber' | 'rose' | 'violet' | 'cyan'; bold?: boolean }) {
+  return (
+    <div className="rounded-lg border border-white/5 bg-slate-900/50 p-3 shadow-sm transition hover:bg-slate-900/80">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">{label}</div>
+      <div className={cn("text-sm tabular-nums truncate", bold ? "font-bold text-white" : "text-slate-200")}>{value}</div>
+    </div>
+  );
+}
+
 export default function CreatePaymentPage() {
   const user = useDemoUser();
   const params = useSearchParams();
@@ -128,6 +129,10 @@ export default function CreatePaymentPage() {
   const { create } = usePaymentRecords();
   const [form, setForm] = useState<PaymentForm>(emptyForm);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(invoiceId);
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const [paymentStructure, setPaymentStructure] = useState<'full' | 'installment'>('full');
+  const [installmentMonths, setInstallmentMonths] = useState(12);
+  const [installmentStartDate, setInstallmentStartDate] = useState(todayDate);
   const paymentDraftKey = useMemo(() => 'payment:auto-save:create', []);
 
   const readyItems = useMemo(() => items.filter((item) => item.paymentStatus === 'Ready' || item.status === 'Queued for Payment'), [items]);
@@ -142,7 +147,7 @@ export default function CreatePaymentPage() {
 
     const perInstallment = Number((total / months).toFixed(2));
 
-    const schedule: InstallmentEntry[] = [];
+    const schedule: InstallmentSchedule[] = [];
     const start = new Date(form.installmentStartDate);
     let currentBalance = total;
 
@@ -159,12 +164,14 @@ export default function CreatePaymentPage() {
 
       currentBalance -= amount;
 
-      schedule.push({ 
-        installmentNo: i + 1, 
-        dueDate: dueDate.toISOString().slice(0, 10), 
-        amount, 
+      schedule.push({
+        id: `INST-${i+1}-${Date.now()}`,
+        installmentNo: i + 1,
+        dueDate: dueDate.toISOString().slice(0, 10),
+        amount,
+        paidAmount: 0,
+        remainingAmount: amount,
         status: 'Pending',
-        remainingBalance: Number(Math.max(0, currentBalance).toFixed(2))
       });
     }
 
@@ -211,14 +218,14 @@ export default function CreatePaymentPage() {
         ? selectedItem.installmentSchedule[0].amount
         : selectedItem.invoiceAmount;
 
-      // Transform InstallmentSchedule[] to InstallmentEntry[] (add remainingBalance)
-      const installmentEntries: InstallmentEntry[] = (selectedItem.installmentSchedule ?? []).map((inst, idx, arr) => ({
-        installmentNo: inst.installmentNo,
-        dueDate: inst.dueDate,
-        amount: inst.amount,
-        status: inst.status,
-        remainingBalance: arr.slice(idx + 1).reduce((sum, i) => sum + i.amount, 0),
+      // Use the approved schedule from the workflow item
+      const installmentEntries: InstallmentSchedule[] = (selectedItem.installmentSchedule ?? []).map((inst) => ({
+        ...inst,
       }));
+
+      setPaymentStructure(selectedItem.paymentStructure ?? 'full');
+      setInstallmentMonths(selectedItem.installmentMonths ?? 1);
+      setInstallmentStartDate(selectedItem.installmentStartDate ?? new Date().toISOString().slice(0, 10));
 
       setForm((current) => ({
         ...current,
@@ -277,39 +284,56 @@ export default function CreatePaymentPage() {
     toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
   }
 
+  const calculations = useMemo(() => {
+    const invoiceAmount = selectedItem?.invoiceAmount || 0;
+    const gstAmount = selectedItem?.gstAmount || 0;
+    const tdsAmount = form.taxDeduction || 0;
+    const bankCharges = form.bankCharge || 0;
+    const finalPayable = invoiceAmount + gstAmount + bankCharges - tdsAmount;
+    const monthlyInstallment = paymentStructure === 'installment' ? (finalPayable / (installmentMonths || 1)) : finalPayable;
+    
+    return { 
+      finalPayable, 
+      monthlyInstallment, 
+      tdsAmount, 
+      bankCharges, 
+      invoiceAmount 
+    };
+  }, [selectedItem, form.taxDeduction, form.bankCharge, paymentStructure, installmentMonths]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!selectedItem || (selectedItem.paymentStatus !== 'Ready' && selectedItem.status !== 'Queued for Payment')) {
-      toast({ type: 'error', title: 'Approved invoice required', description: 'Select an invoice approved by L1, L2, or L3 before creating payment.' });
-      return;
-    }
-    if (!form.invoiceNumber || !form.vendorName || form.amount <= 0 || !form.paymentMode || !form.bankName || !form.ifsc) {
-      toast({ type: 'error', title: 'Missing details', description: 'Complete invoice, vendor, bank, and payment fields before creating the payment.' });
+    const { finalPayable, monthlyInstallment, tdsAmount, bankCharges } = calculations;
+
+    // Enterprise Validation Rules
+    if (!selectedItem) {
+      toast({ type: 'error', title: 'Selection Required', description: 'Select an approved invoice to process payment.' });
       return;
     }
 
-    // STEP 8: Installment Validation Rules
-    if (form.paymentType === 'Installment') {
-      if (form.totalInstallmentAmount <= 0) {
-        toast({ type: 'error', title: 'Invalid total amount', description: 'Total payable amount is required and must be greater than zero.' });
+    if (isNaN(finalPayable) || finalPayable < 0) {
+      toast({ type: 'error', title: 'Invalid Total', description: 'Final payable amount cannot be negative or NaN.' });
+      return;
+    }
+
+    if (paymentStructure === 'installment') {
+      if (installmentMonths <= 0) {
+        toast({ type: 'error', title: 'Invalid Tenure', description: 'Installment duration must be at least 1 month.' });
         return;
       }
-      if (form.installmentDuration <= 0) {
-        toast({ type: 'error', title: 'Invalid duration', description: 'Installment duration must be at least 1 month.' });
+      if (!installmentStartDate) {
+        toast({ type: 'error', title: 'Date Required', description: 'Installment start date is mandatory for schedule generation.' });
         return;
       }
-      if (form.installmentDuration > 60) {
-        toast({ type: 'error', title: 'Tenure limit exceeded', description: 'Installment duration cannot exceed 60 months (5 years).' });
+      if (form.installments.length === 0) {
+        toast({ type: 'error', title: 'Schedule Empty', description: 'Amortization schedule must be generated before saving.' });
         return;
       }
-      if (!form.installmentStartDate) {
-        toast({ type: 'error', title: 'Missing start date', description: 'The first installment due date is required.' });
-        return;
-      }
-      if (!installmentBreakdown || installmentBreakdown.perInstallment <= 0) {
-        toast({ type: 'error', title: 'Calculation error', description: 'Calculated installment amount must be greater than zero. Please check amount and duration.' });
-        return;
-      }
+    }
+
+    if (!form.bankName || !form.ifsc || !form.bankAccountMasked) {
+      toast({ type: 'error', title: 'Banking Error', description: 'Beneficiary bank details are required for clearing.' });
+      return;
     }
 
     create({
@@ -335,16 +359,22 @@ export default function CreatePaymentPage() {
       remittanceNote: form.remittanceNote,
       taxDeduction: form.taxDeduction,
       bankCharge: form.bankCharge,
-      netPaid: form.netPaid,
+      netPaid: paymentStructure === 'installment' ? monthlyInstallment : finalPayable,
       ledgerStatus: form.ledgerStatus,
       erpSyncStatus: form.erpSyncStatus,
       holdFlag: form.holdFlag,
       holdReason: form.holdReason,
       priority: form.priority,
       paymentGateway: form.paymentGateway,
-      paymentType: form.paymentType,
-      totalInstallmentAmount: form.totalInstallmentAmount,
-      installments: form.paymentType === 'Installment' ? installmentBreakdown?.schedule || [] : [],
+      paymentStructure: paymentStructure,
+      installmentMonths: installmentMonths,
+      installmentSchedule: form.installments,
+      monthlyInstallmentAmount: monthlyInstallment,
+      remainingBalance: finalPayable,
+      gstAmount: selectedItem?.gstAmount || 0,
+      tdsAmount: tdsAmount,
+      bankCharges: bankCharges,
+      finalPayable: finalPayable,
       remarks: form.remarks,
     } as any);
 
@@ -358,23 +388,10 @@ export default function CreatePaymentPage() {
     router.push('/payments');
   }
 
-
   return (
     <div className="space-y-5">
-      <Panel title="Create payment instruction" subtitle="Payments can be created only after an invoice is approved by L1, L2, or L3 and is ready for Finance Head payment processing.">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-slate-400">{selectedItem ? `Preparing payment for ${selectedItem.invoiceNumber}` : 'Select an approved invoice to begin.'}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge tone="emerald">{selectedItem ? selectedItem.approvalLevel : 'Payment'}</Badge>
-              <Badge tone={selectedItem?.status === 'Queued for Payment' ? 'emerald' : selectedItem?.status === 'Approved' ? 'cyan' : 'slate'}>{selectedItem?.status ?? 'Draft'}</Badge>
-            </div>
-          </div>
-          <Link href="/payments" className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200 transition hover:bg-white/10"><ArrowLeft size={16} /> Back to payments</Link>
-        </div>
-      </Panel>
-
       <form onSubmit={submit} className="space-y-5">
+        {/* 1. Approved Invoice Selector */}
         <Panel title="Approved invoice selector" subtitle="Choose from invoices already routed through L1, L2, or L3 approval.">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
             <label className="text-sm text-slate-300">
@@ -391,7 +408,7 @@ export default function CreatePaymentPage() {
           </div>
         </Panel>
 
-        {form.paymentType === 'Installment' && form.installments && form.installments.length > 0 && (
+        {paymentStructure === 'installment' && form.installments && form.installments.length > 0 && (
           <Panel title="Installment Payment Schedule" subtitle={`Total ${form.installments.length} installments, Current: #1 of ${form.installments.length}`}>
             <div className="grid gap-4 lg:grid-cols-4">
               <div className="rounded-lg border border-white/10 bg-white/5 p-4">
@@ -489,12 +506,26 @@ export default function CreatePaymentPage() {
           </div>
 
           <div className="rounded-lg border border-white/10 bg-slate-950/45 p-4 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SummaryMetric label="Taxable Amount" value={money(calculations.invoiceAmount)} />
+              <SummaryMetric label="GST Component" value={money(selectedItem?.gstAmount || 0)} tone="violet" />
+              <SummaryMetric label="Bank Processing" value={money(calculations.bankCharges)} />
+              <SummaryMetric label="TDS (Deduction)" value={`- ${money(calculations.tdsAmount)}`} tone="rose" />
+            </div>
+            
             <div className="rounded-lg border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between gap-3">
-                <div><div className="text-xs uppercase tracking-[0.18em] text-slate-500">Net payment</div><div className="mt-2 text-2xl font-semibold text-white">{money(form.netPaid)}</div></div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    {paymentStructure === 'installment' ? 'Current Installment' : 'Total Net Payable'}
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white">
+                    {money(paymentStructure === 'installment' ? calculations.monthlyInstallment : calculations.finalPayable)}
+                  </div>
+                </div>
                 <Badge tone={form.status === 'Pending' ? 'amber' : 'emerald'}>{form.status}</Badge>
               </div>
-              <div className="mt-3 text-sm text-slate-400">Net payment is calculated as invoice amount less tax deduction and bank charges.</div>
+              <div className="mt-3 text-sm text-slate-400">Net payment accounts for Gross Invoice value (Subtotal + GST) plus processing fees, less statutory deductions.</div>
             </div>
             <InputField label="Clearing channel" value={form.clearingChannel} onChange={(value) => patchForm({ clearingChannel: value })} required type="text" />
             <InputField label="Payment gateway" value={form.paymentGateway} onChange={(value) => patchForm({ paymentGateway: value })} required type="text" />

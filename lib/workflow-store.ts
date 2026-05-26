@@ -1,15 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import type { InstallmentSchedule } from './types';
 
 export type WorkflowStatus = 'Submitted' | 'Approved' | 'Rejected' | 'On Hold' | 'Queued for Payment' | 'Paid' | 'Payment Failed';
-
-export type InstallmentSchedule = {
-  id: string;
-  installmentNo: number;
-  dueDate: string;
-  amount: number;
-  status: 'Pending' | 'Paid' | 'Overdue';
-};
 
 export type WorkflowItem = {
   id: string;
@@ -40,6 +33,10 @@ export type WorkflowItem = {
   monthlyInstallmentAmount?: number;
   installmentStartDate?: string;
   installmentSchedule?: InstallmentSchedule[];
+  remainingInstallmentBalance?: number;
+  paidInstallmentAmount?: number;
+  completedInstallments?: number;
+  pendingInstallments?: number;
 };
 
 export const workflowKey = 'procureflow-workflow-items';
