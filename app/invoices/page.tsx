@@ -664,6 +664,7 @@ export default function InvoicesPage() {
   const [singleDate, setSingleDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [isQuickFilterDropdownOpen, setIsQuickFilterDropdownOpen] = useState(false);
 
   const invoiceDraftKey = useMemo(() => `invoice:auto-save:create`, []);
@@ -677,6 +678,7 @@ export default function InvoicesPage() {
     setActiveFilter('');
     setStatusFilter('All');
     setSourceFilter('All');
+    setSortOrder('newest');
     setPage(1);
   };
 
@@ -763,9 +765,9 @@ export default function InvoicesPage() {
   const [previewItem, setPreviewItem] = useState<WorkflowItem | null>(null);
   const pageSize = 8;
 
-  const rows = useMemo(() => items.map((item, index) => ({
+  const rows = useMemo(() => items.map((item) => ({
     ...item,
-    arrivalDate: index < 3 ? today : item.updatedAt,
+    arrivalDate: item.updatedAt || today,
     intakeMode: item.lastActionBy.toLowerCase().includes('ocr') ? 'OCR' : 'Manual',
   })), [items]);
   const todayRows = rows.filter((row) => row.arrivalDate?.startsWith(today));
@@ -843,29 +845,46 @@ export default function InvoicesPage() {
   }, [paymentStructure, draft.grossAmount, installmentMonths, installmentStartDate]);
 
   const filteredData = useMemo(() => {
-    return rows.filter((item) => {
-      const itemDate = new Date(item.invoiceDate || (item as any).poDate || new Date());
-      
-      // Calendar & Quick Filter Logic
-      const matchesDate = singleDate
+    // 1. Original Data
+    let result = [...rows];
+
+    // 2. Search Filter
+    const search = searchTerm.toLowerCase().trim();
+    if (search) {
+      result = result.filter((item) =>
+        (item.vendorName || '').toLowerCase().includes(search) ||
+        (item.poNumber || '').toLowerCase().includes(search) ||
+        (item.invoiceNumber || '').toLowerCase().includes(search)
+      );
+    }
+
+    // 3. Date Filter & 4. Quick Filter
+    result = result.filter((item) => {
+      const itemDate = new Date(item.invoiceDate || (item as any).poDate || 0);
+      return singleDate
         ? itemDate.toISOString().slice(0, 10) === singleDate
         : (!fromDate || itemDate >= new Date(fromDate)) &&
           (!toDate || itemDate <= new Date(toDate + 'T23:59:59'));
-
-      // Search Logic
-      const search = searchTerm.toLowerCase().trim();
-      const matchesSearch =
-        (item.vendorName || '').toLowerCase().includes(search) ||
-        (item.poNumber || '').toLowerCase().includes(search) ||
-        (item.invoiceNumber || '').toLowerCase().includes(search);
-
-      // Business Logic (Status & Source)
-      const byStatus = statusFilter === 'All' || item.status === statusFilter || item.matchStatus === statusFilter || item.paymentStatus === statusFilter;
-      const bySource = sourceFilter === 'All' || item.intakeMode === sourceFilter;
-
-      return matchesDate && matchesSearch && byStatus && bySource;
     });
-  }, [rows, fromDate, toDate, singleDate, searchTerm, statusFilter, sourceFilter]);
+
+    // Business Logic Filters (Status & Source)
+    result = result.filter((item) => {
+      const matchesStatus = statusFilter === 'All' || item.status === statusFilter || item.matchStatus === statusFilter || item.paymentStatus === statusFilter;
+      const matchesSource = sourceFilter === 'All' || item.intakeMode === sourceFilter;
+      return matchesStatus && matchesSource;
+    });
+
+    // 5. Sorting
+    result.sort((a, b) => {
+      const dateA = new Date(a.invoiceDate || a.updatedAt || 0).getTime() || 0;
+      const dateB = new Date(b.invoiceDate || b.updatedAt || 0).getTime() || 0;
+      
+      if (dateA === dateB) return 0;
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
+    return result;
+  }, [rows, fromDate, toDate, singleDate, searchTerm, statusFilter, sourceFilter, sortOrder]);
 
   const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -1352,6 +1371,19 @@ export default function InvoicesPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Sort Section */}
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sort Order</label>
+          <select 
+            value={sortOrder} 
+            onChange={(e) => { setSortOrder(e.target.value as 'newest' | 'oldest'); setPage(1); }}
+            className="w-40 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
         </div>
 
         {/* Reset Section */}

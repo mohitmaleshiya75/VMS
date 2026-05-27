@@ -158,6 +158,7 @@ export default function PurchaseOrdersPage() {
     setSearchTerm('');
     setActiveFilter('');
     setStatusFilter('All');
+    setSortOrder('newest');
   };
 
   const applyTodayFilter = () => {
@@ -229,7 +230,8 @@ export default function PurchaseOrdersPage() {
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [statusFilter, setStatusFilter] = useState('All');
-  const [sort, setSort] = useState('Newest');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [page, setPage] = useState(1);
 
   const isAdmin = user.key === 'admin';
   const normalizedDraft = useMemo(() => normalizePurchaseOrder(draft), [draft]);
@@ -277,12 +279,15 @@ export default function PurchaseOrdersPage() {
     });
 
     return [...data].sort((a, b) => {
-      if (sort === 'Total high') return b.finalTotalAmount - a.finalTotalAmount;
-      if (sort === 'Vendor') return a.vendorName.localeCompare(b.vendorName);
-      if (sort === 'Delivery') return new Date(a.intendedDeliveryDate).getTime() - new Date(b.intendedDeliveryDate).getTime();
-      return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+      const dateA = new Date(a.poDate || (a as any).invoiceDate || 0).getTime() || 0;
+      const dateB = new Date(b.poDate || (b as any).invoiceDate || 0).getTime() || 0;
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
-  }, [items, fromDate, toDate, singleDate, searchTerm, statusFilter, sort]);
+  }, [items, fromDate, toDate, singleDate, searchTerm, statusFilter, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / 8));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = filteredData.slice((currentPage - 1) * 8, currentPage * 8);
 
   function patchDraft(patch: Partial<PurchaseOrder>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -392,6 +397,7 @@ export default function PurchaseOrdersPage() {
     setPoUploadFile('');
     setActiveView('list');
     setErrors([]);
+    setPage(1);
     setFieldErrors({});
   }
 
@@ -581,16 +587,16 @@ export default function PurchaseOrdersPage() {
       </Panel>}
 
       {activeView === 'list' && <>
-        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-white/5 bg-slate-900/50 p-4 shadow-sm mb-4">
+        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-white/5 bg-slate-900/50 p-4 shadow-sm mb-5">
           {/* Search Section */}
           <div className="flex-1 min-w-[240px] space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Search Section</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Search POs</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
               <input 
                 value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)} 
-                placeholder="Search PO / vendor" 
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} 
+                placeholder="PO #, Vendor, Dept..." 
                 className="w-full rounded-lg border border-white/10 bg-slate-950/50 py-2 pl-10 pr-3 text-sm outline-none focus:border-cyan-400/30 text-slate-200 transition-all placeholder:text-slate-600"
               />
             </div>
@@ -598,12 +604,12 @@ export default function PurchaseOrdersPage() {
 
           {/* Calendar Filter Section */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Calendar Filter</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Date Range</label>
             <div className="flex items-center gap-2">
               <input 
                 type="date" 
                 value={singleDate} 
-                onChange={(e) => { setSingleDate(e.target.value); setFromDate(''); setToDate(''); setActiveFilter(''); }}
+                onChange={(e) => { setSingleDate(e.target.value); setFromDate(''); setToDate(''); setActiveFilter(''); setPage(1); }}
                 className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
                 title="Specific Date"
               />
@@ -611,14 +617,14 @@ export default function PurchaseOrdersPage() {
               <input 
                 type="date" 
                 value={fromDate} 
-                onChange={(e) => { setFromDate(e.target.value); setSingleDate(''); setActiveFilter(''); }}
+                onChange={(e) => { setFromDate(e.target.value); setSingleDate(''); setActiveFilter(''); setPage(1); }}
                 className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
                 placeholder="From"
               />
               <input 
                 type="date" 
                 value={toDate} 
-                onChange={(e) => { setToDate(e.target.value); setSingleDate(''); setActiveFilter(''); }}
+                onChange={(e) => { setToDate(e.target.value); setSingleDate(''); setActiveFilter(''); setPage(1); }}
                 className="w-36 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
                 placeholder="To"
               />
@@ -627,7 +633,7 @@ export default function PurchaseOrdersPage() {
 
           {/* Quick Filter List */}
           <div className="space-y-1.5 relative">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Quick Filter List</label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Quick Range</label>
             <button
               type="button"
               onClick={() => setIsQuickFilterDropdownOpen(!isQuickFilterDropdownOpen)}
@@ -656,6 +662,19 @@ export default function PurchaseOrdersPage() {
             )}
           </div>
         
+        {/* Sort Section */}
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sort By</label>
+          <select 
+            value={sortOrder}
+            onChange={(e) => { setSortOrder(e.target.value as 'newest' | 'oldest'); setPage(1); }}
+            className="w-40 rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30 text-slate-200 [color-scheme:dark] transition-all"
+          >
+            <option value="newest">Newest Date First</option>
+            <option value="oldest">Oldest Date First</option>
+          </select>
+        </div>
+
         {/* Reset Section */}
         <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Reset</label>
@@ -672,22 +691,24 @@ export default function PurchaseOrdersPage() {
 
         <Panel
           id="po-list"
-          title={`Showing ${filteredData.length} purchase orders`}
+          title={`Showing ${filteredData.length} Purchase Orders`}
           subtitle="Search, filter, sort, view details, edit, print, export, and delete purchase orders."
-          action={<button onClick={resetData} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10"><RefreshCw size={15} />Reset PO data</button>}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <select 
+                value={statusFilter} 
+                onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }} 
+                className="rounded-lg border border-white/10 bg-slate-950/50 px-3 py-2 text-sm outline-none focus:border-cyan-400/30"
+              >
+                <option>All</option>
+                {statusOptions.map((status) => <option key={status}>{status}</option>)}
+              </select>
+              <button onClick={resetData} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:bg-white/10">
+                <RefreshCw size={15} />Reset PO data
+              </button>
+            </div>
+          }
         >
-          <div className="mb-4 grid gap-3 lg:grid-cols-[auto_auto]">
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm outline-none focus:border-cyan-400/30">
-              <option>All</option>
-              {statusOptions.map((status) => <option key={status}>{status}</option>)}
-            </select>
-            <select value={sort} onChange={(event) => setSort(event.target.value)} className="rounded-lg border border-white/10 bg-slate-950/50 px-4 py-3 text-sm outline-none focus:border-cyan-400/30">
-              <option>Newest</option>
-              <option>Total high</option>
-              <option>Vendor</option>
-              <option>Delivery</option>
-            </select>
-          </div>
 
           <div className="grid gap-3 md:hidden">
             {filteredData.length === 0 ? (
@@ -698,76 +719,100 @@ export default function PurchaseOrdersPage() {
               </div>
             ) : filteredData.map((po) => (
               <article key={po.id} className="rounded-lg border border-white/10 bg-slate-950/45 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-white">{po.poNumber}</div>
-                    <div className="mt-1 text-sm text-slate-400">{po.vendorName}</div>
-                  </div>
-                  <Badge tone={statusTone(po.status)}>{po.status}</Badge>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-300">
-                  <div><span className="block text-xs uppercase tracking-[0.16em] text-slate-500">PO Date</span>{po.poDate ? new Date(po.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</div>
-                  <div><span className="block text-xs uppercase tracking-[0.16em] text-slate-500">Delivery</span>{po.intendedDeliveryDate ? new Date(po.intendedDeliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</div>
-                  <div><span className="block text-xs uppercase tracking-[0.16em] text-slate-500">Total</span>{money(po.finalTotalAmount, po.currency)}</div>
-                  <div><span className="block text-xs uppercase tracking-[0.16em] text-slate-500">Rows</span>{po.items.length}</div>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <Link href={`/purchase-orders/${encodeURIComponent(po.id)}`} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 transition hover:bg-white/10" aria-label={`View ${po.poNumber}`}><Eye size={16} /></Link>
-                  <button onClick={() => edit(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" aria-label={`Edit ${po.poNumber}`}><Pencil size={16} /></button>
-                  {isAdmin && <button onClick={() => deletePo(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-rose-400/30 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/15" aria-label={`Delete ${po.poNumber}`}><Trash2 size={16} /></button>}
-                </div>
               </article>
             ))}
           </div>
 
-          <div className="hidden overflow-auto md:block rounded-lg border border-white/5 max-h-[650px] custom-scrollbar">
+          <div className="hidden overflow-auto md:block rounded-xl border border-white/10 max-h-[650px] custom-scrollbar">
             <table className="min-w-[1180px] w-full border-separate border-spacing-0 text-left text-sm relative">
-              <thead className="sticky top-0 z-20">
-                <tr className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur-md">PO Number</th>
+              <thead className="sticky top-0 z-20 bg-slate-900 shadow-sm">
+                <tr className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 bg-slate-900/95 backdrop-blur-md">
+                  <th className="border-b border-white/10 px-4 py-4">PO Details</th>
                   <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur-md">Vendor Details</th>
-                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur-md">PO Date</th>
-                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur-md">Delivery</th>
-                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 text-right backdrop-blur-md">Total Amount</th>
+                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur-md">Department</th>
+                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 text-right backdrop-blur-md">PO Amount</th>
                   <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 text-center backdrop-blur-md">Status</th>
-                  <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 text-center backdrop-blur-md">Matching</th>
                   <th className="border-b border-white/10 bg-slate-900/95 px-4 py-3 text-right backdrop-blur-md">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
-                {filteredData.length === 0 ? (
+              <tbody className="divide-y divide-white/5 bg-slate-950/20">
+                {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-24 text-center">
+                    <td colSpan={6} className="py-24 text-center">
                       <div className="inline-flex flex-col items-center justify-center rounded-2xl border border-white/5 bg-slate-950/20 px-16 py-10">
                         <div className="mb-4 rounded-full bg-white/5 p-4 text-slate-600"><FileText size={32} strokeWidth={1.5} /></div>
                         <h4 className="text-base font-semibold text-slate-300">No purchase orders found</h4>
-                        <p className="mt-1 text-sm text-slate-500 italic">Try changing filters or search</p>
+                        <p className="mt-1 text-sm text-slate-500 italic">Try adjusting filters or search term.</p>
                       </div>
                     </td>
                   </tr>
-                ) : filteredData.map((po) => (
-                  <tr key={po.id} className="group transition-colors hover:bg-white/[0.04] even:bg-white/[0.02]">
-                    <td className="px-4 py-4 font-bold tracking-tight text-white">{po.poNumber}<div className="text-[10px] uppercase font-bold text-slate-600">{po.items.length} Rows</div></td>
-                    <td className="px-4 py-5">
-                      <div className="font-semibold text-slate-200">{po.vendorName}</div>
-                      <div className="text-[11px] text-slate-500 font-medium">{po.vendorEmail}</div>
-                    </td>
-                    <td className="px-4 py-5 text-slate-400 text-xs whitespace-nowrap tabular-nums">{po.poDate ? new Date(po.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
-                    <td className="px-4 py-5 text-slate-400 text-xs whitespace-nowrap tabular-nums">{po.intendedDeliveryDate ? new Date(po.intendedDeliveryDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}</td>
-                    <td className="px-4 py-5 text-right font-bold text-slate-100 tabular-nums">{money(po.finalTotalAmount, po.currency)}</td>
-                    <td className="px-4 py-5 text-center"><Badge tone={statusTone(po.status)}>{po.status}</Badge></td>
-                    <td className="px-4 py-5 text-center"><Badge tone={matchingTone(po.matchingStatus)}>{po.matchingStatus}</Badge></td>
-                    <td className="px-4 py-5 text-right">
-                      <div className="flex flex-wrap justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <Link href={`/purchase-orders/${encodeURIComponent(po.id)}`} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 transition hover:bg-white/10" aria-label={`View ${po.poNumber}`}><Eye size={16} /></Link>
-                        <button onClick={() => edit(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" aria-label={`Edit ${po.poNumber}`}><Pencil size={16} /></button>
-                        {isAdmin && <button onClick={() => deletePo(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-rose-400/30 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/15" aria-label={`Delete ${po.poNumber}`}><Trash2 size={16} /></button>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : (
+                  pageRows.map((po) => {
+                    // Professional Status Badge Mapping
+                    const tone = po.status === 'Approved' ? 'emerald' : 
+                                 po.status === 'Draft' ? 'slate' : 
+                                 po.status === 'Cancelled' ? 'rose' : 'amber';
+                    
+                    return (
+                      <tr key={po.id} className="group transition-colors hover:bg-white/[0.04] even:bg-white/[0.02]">
+                        <td className="px-4 py-4">
+                          <div className="font-bold tracking-tight text-white">{po.poNumber}</div>
+                          <div className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                            <span className="tabular-nums font-bold text-slate-400">
+                              {po.poDate ? new Date(po.poDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                            </span>
+                            <span>•</span>
+                            <span className="text-slate-600">{po.items.length} Items</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-5">
+                          <div className="text-sm font-semibold text-slate-200">{po.vendorName}</div>
+                          <div className="text-[11px] text-slate-500 font-medium">{po.vendorReferenceId || 'NO-REF-ID'}</div>
+                        </td>
+                        <td className="px-4 py-5">
+                          <div className="text-xs text-slate-300 font-medium">{po.departmentName || 'General'}</div>
+                          <div className="text-[10px] text-slate-600 uppercase font-bold tracking-tighter">{po.costCenter || 'No Cost Center'}</div>
+                        </td>
+                        <td className="px-4 py-5 text-right">
+                          <div className="font-bold text-slate-100 tabular-nums">{money(po.finalTotalAmount, po.currency)}</div>
+                          <div className="text-[10px] font-bold text-slate-600 uppercase tracking-tighter">{po.paymentTerms}</div>
+                        </td>
+                        <td className="px-4 py-5 text-center">
+                          <Badge tone={tone}>{po.status}</Badge>
+                        </td>
+                        <td className="px-4 py-5 text-right">
+                          <div className="flex flex-wrap justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                            <Link href={`/purchase-orders/${encodeURIComponent(po.id)}`} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 transition hover:bg-white/10" aria-label={`View ${po.poNumber}`}><Eye size={16} /></Link>
+                            <button onClick={() => edit(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 text-slate-200 transition hover:bg-white/10" aria-label={`Edit ${po.poNumber}`}><Pencil size={16} /></button>
+                            {isAdmin && <button onClick={() => deletePo(po)} className="grid h-9 w-9 place-items-center rounded-lg border border-rose-400/30 bg-rose-400/10 text-rose-200 transition hover:bg-rose-400/15" aria-label={`Delete ${po.poNumber}`}><Trash2 size={16} /></button>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
+          </div>
+          
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-4">
+            <div className="text-sm text-slate-400">Page {currentPage} of {totalPages}</div>
+            <div className="flex gap-2">
+              <button 
+                disabled={currentPage <= 1} 
+                onClick={() => setPage((value) => Math.max(1, value - 1))} 
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 disabled:opacity-40 transition-all hover:bg-white/10"
+              >
+                Previous
+              </button>
+              <button 
+                disabled={currentPage >= totalPages} 
+                onClick={() => setPage((value) => Math.min(totalPages, value + 1))} 
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 disabled:opacity-40 transition-all hover:bg-white/10"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </Panel>
       </>}
