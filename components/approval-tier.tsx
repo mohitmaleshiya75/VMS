@@ -9,7 +9,7 @@ export function ApprovalTier({ amount }: { amount: number }) {
       <div className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Approver routing</div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <div>
-          <div className="text-base font-semibold text-white">{money(amount)}</div>
+          <div className="text-base font-semibold text-white">{money(amount)} </div>
           <div className="text-xs text-slate-400">Auto-routed to {tier.level}</div>
         </div>
         <Badge tone="cyan">{tier.role}</Badge>
