@@ -8,7 +8,7 @@ import { useToast } from '@/components/toast';
 import { useDemoUser } from '@/lib/auth';
 import { useVendors } from '@/lib/vendor-store';
 import type { Vendor } from '@/lib/types';
-import { AlertTriangle, Building2, CheckCircle2, Eye, FileCheck2, RefreshCw, RotateCcw, Search, ShieldAlert, Upload } from 'lucide-react';
+import { AlertTriangle, Ban, Building2, CheckCircle2, Eye, FileCheck2, RefreshCw, RotateCcw, Search, ShieldAlert, ShieldCheck, Upload } from 'lucide-react';
 
 type VendorDraft = {
   legalName: string;
@@ -94,6 +94,7 @@ const viewLabels: Record<string, string> = {
   approved: 'Approved Vendors',
   rejected: 'Rejected Vendors',
   pending: 'Pending Finance Approval',
+  blocked: 'Blocked Vendors',
 };
 
 function maskAccount(value: string) {
@@ -230,8 +231,8 @@ export default function VendorsPage() {
   const toast = useToast();
   const params = useSearchParams();
   const requestedView = params?.get('view') || 'all';
-  const view = ['add', 'all', 'approved', 'rejected', 'pending'].includes(requestedView) ? requestedView : 'all';
-  const { vendors, add, reset } = useVendors();
+  const view = ['add', 'all', 'approved', 'rejected', 'pending', 'blocked'].includes(requestedView) ? requestedView : 'all';
+  const { vendors, add, save, reset } = useVendors();
   const [draft, setDraft] = useState<VendorDraft>(emptyDraft);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -242,19 +243,20 @@ export default function VendorsPage() {
 
   const stats = useMemo(() => ({
     total: vendors.length,
-    pending: vendors.filter((vendor) => vendor.approvalStatus === 'Pending').length,
-    approved: vendors.filter((vendor) => vendor.approvalStatus === 'Approved').length,
-    rejected: vendors.filter((vendor) => vendor.approvalStatus === 'Rejected' || vendor.blacklistFlag === 'Yes').length,
+    pending: vendors.filter((vendor) => vendor.approvalStatus === 'Pending' && vendor.blacklistFlag !== 'Yes').length,
+    approved: vendors.filter((vendor) => vendor.approvalStatus === 'Approved' && vendor.blacklistFlag !== 'Yes').length,
+    blocked: vendors.filter((vendor) => vendor.blacklistFlag === 'Yes').length,
   }), [vendors]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return vendors.filter((vendor) => {
       const byView =
+        view === 'blocked' ? vendor.blacklistFlag === 'Yes' :
         view === 'approved' ? vendor.approvalStatus === 'Approved' :
-        view === 'rejected' ? vendor.approvalStatus === 'Rejected' || vendor.blacklistFlag === 'Yes' :
+        view === 'rejected' ? vendor.approvalStatus === 'Rejected' :
         view === 'pending' ? vendor.approvalStatus === 'Pending' :
-        true;
+        vendor.blacklistFlag !== 'Yes';
       const byType = typeFilter === 'All' || vendor.vendorType === typeFilter || vendor.vendorCategory === typeFilter;
       const phrase = `${vendor.legalName} ${vendor.displayName} ${vendor.vendorCode} ${vendor.gstin} ${vendor.pan} ${vendor.primaryContactEmail} ${vendor.bankName}`.toLowerCase();
       return byView && byType && (!normalized || phrase.includes(normalized));
@@ -272,6 +274,27 @@ export default function VendorsPage() {
   function handleClearForm() {
     setDraft(emptyDraft);
     toast({ type: 'success', title: 'Form Cleared', description: 'All entered data has been removed successfully.' });
+  }
+
+  function handleToggleBlock(vendor: Vendor) {
+    const isBlocking = vendor.blacklistFlag !== 'Yes';
+    const previousStatus = vendor.approvalStatus === 'Approved' ? 'Active' : 'Pending Approval';
+
+    const updatedVendors = vendors.map((v) =>
+      v.id === vendor.id
+        ? { 
+            ...v, 
+            blacklistFlag: isBlocking ? 'Yes' : 'No', 
+            status: isBlocking ? 'Blocked' : previousStatus 
+          }
+        : v
+    );
+    save(updatedVendors);
+    toast({
+      type: isBlocking ? 'error' : 'success',
+      title: isBlocking ? 'Vendor Blocked' : 'Vendor Unblocked',
+      description: `${vendor.displayName} has been ${isBlocking ? 'moved to blacklist' : 'restored to active status'}.`
+    });
   }
 
   function submit(event: FormEvent) {
@@ -346,10 +369,18 @@ export default function VendorsPage() {
     <div className="space-y-5">
       <Panel title="Vendor management" subtitle="Admin creates vendor KYC records. Finance Head handles approvals from the sidebar Finance Approval page.">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Total vendors" value={stats.total} icon={<Building2 size={18} />} tone="cyan" />
-          <MetricCard label="Pending" value={stats.pending} icon={<FileCheck2 size={18} />} tone="amber" />
-          <MetricCard label="Approved" value={stats.approved} icon={<CheckCircle2 size={18} />} tone="emerald" />
-          <MetricCard label="Rejected" value={stats.rejected} icon={<ShieldAlert size={18} />} tone="rose" />
+          <Link href="/vendors?view=all" className="block outline-none">
+            <MetricCard label="Total vendors" value={stats.total} icon={<Building2 size={18} />} tone="cyan" />
+          </Link>
+          <Link href="/vendors?view=pending" className="block outline-none">
+            <MetricCard label="Pending" value={stats.pending} icon={<FileCheck2 size={18} />} tone="amber" />
+          </Link>
+          <Link href="/vendors?view=approved" className="block outline-none">
+            <MetricCard label="Approved" value={stats.approved} icon={<CheckCircle2 size={18} />} tone="emerald" />
+          </Link>
+          <Link href="/vendors?view=blocked" className="block outline-none">
+            <MetricCard label="Blocked" value={stats.blocked} icon={<ShieldAlert size={18} />} tone="rose" />
+          </Link>
         </div>
       </Panel>
 
@@ -480,6 +511,16 @@ export default function VendorsPage() {
                     </td>
                     <td className="border-b border-white/5 px-3 py-4 text-right">
                       <div className="flex justify-end gap-2">
+                        {vendor.blacklistFlag === 'Yes' ? (
+                          <button onClick={() => handleToggleBlock(vendor)} className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20">
+                            <ShieldCheck size={15} />
+                            Unblock Vendor
+                          </button>
+                        ) : (
+                          <button onClick={() => handleToggleBlock(vendor)} className="grid h-8 w-8 place-items-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20" title="Block vendor">
+                            <Ban size={15} />
+                          </button>
+                        )}
                         <Link href="/vendor-approvals" className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/15">Finance review</Link>
                         <button onClick={() => setSelected(vendor)} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-white/5 text-cyan-200 hover:bg-white/10" title="View vendor">
                           <Eye size={15} />
