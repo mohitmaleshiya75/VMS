@@ -1053,7 +1053,7 @@ export default function InvoicesPage() {
       paymentMode: manualDraft.paymentMode,
       paymentStatus: validation.status === 'Matched' ? 'Not Ready' : 'Hold',
       erpSyncStatus: 'Pending',
-      lastActionBy: `${mode} Invoice Intake (Validated)`,
+      lastActionBy: `${mode} Invoice Management (Validated)`,
       updatedAt: today,
       paymentStructure,
       installmentMonths: paymentStructure === 'installment' ? installmentMonths : undefined,
@@ -1093,7 +1093,7 @@ export default function InvoicesPage() {
   return (
     <div className="space-y-5">
       <Panel
-        title="Invoice intake"
+        title="Invoice Management"
         subtitle="AP users either upload an invoice for OCR extraction or create it manually. Registers are shown separately so forms and data do not fight for space."
         action={
           <SegmentedControl
@@ -1101,7 +1101,7 @@ export default function InvoicesPage() {
             onChange={setActiveView}
             options={[
               { value: 'create', label: 'Create invoice', icon: <FileText size={14} /> },
-              { value: 'register', label: 'Invoice register', icon: <ListChecks size={14} /> },
+              { value: 'register', label: 'Registered Invoice', icon: <ListChecks size={14} /> },
             ]}
           />
         }

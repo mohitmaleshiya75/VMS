@@ -760,7 +760,7 @@ export default function MatchingPage() {
   return (
     <div className="space-y-5">
       <Panel
-        title="Phase 3: 3-way matching"
+        title="Phase 3: 3-Way Matching"
         subtitle="PO, GRN/delivery challan, and invoice details are compared for quantity, price, references, and terms."
         action={<button onClick={runMatching} className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><PlayCircle size={16} /> Run validation</button>}
       >
