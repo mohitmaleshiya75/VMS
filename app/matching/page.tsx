@@ -1,8 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { Badge, Panel } from '@/components/ui';
 import { useToast } from '@/components/toast';
+import { useDemoUser } from '@/lib/auth';
 import { evaluateWorkflowMatch, matchBadgeTone, matchStatusLabel } from '@/lib/matching';
 import { useWorkflowItems, type WorkflowItem } from '@/lib/workflow-store';
 import { usePurchaseOrders } from '@/lib/purchase-order-store';
@@ -721,6 +723,9 @@ function ComparisonModal({ item, onClose, purchaseOrders, goodsReceipts, focused
 // ==========================================
 
 export default function MatchingPage() {
+  const user = useDemoUser();
+  const router = useRouter();
+  const pathname = usePathname();
   const { items, update } = useWorkflowItems();
   const { items: purchaseOrders } = usePurchaseOrders();
   const { items: goodsReceipts } = useGoodsReceipts();
@@ -729,6 +734,42 @@ export default function MatchingPage() {
   // State to trigger detailed comparison modal
   const [selectedCompareItem, setSelectedCompareItem] = useState<WorkflowItem | null>(null);
   const [focusedDoc, setFocusedDoc] = useState<'po' | 'grn' | 'invoice' | 'all'>('all');
+
+  useEffect(() => {
+    const currentUserRole = user.key;
+
+    // Roles allowed on this page: 'admin' (assuming 'matching_specialist' if it existed)
+    if (currentUserRole === 'admin') {
+      return; // User is allowed, do nothing.
+    }
+
+    // User is not allowed, redirect based on their role
+    let redirectPath = '/'; // Default fallback
+    let redirectReason = 'You do not have access to the 3-Way Matching board.';
+
+    switch (currentUserRole) {
+      case 'l1':
+      case 'l2':
+      case 'l3':
+        redirectPath = '/approvals';
+        redirectReason = 'You have been redirected to your Approval Queue.';
+        break;
+      case 'finance':
+        redirectPath = '/vendors/approval';
+        redirectReason = 'You have been redirected to the Vendor Approval page.';
+        break;
+    }
+
+    if (user.key && pathname !== redirectPath) { // Only redirect if not already on the target page
+      router.replace(redirectPath);
+      toast({ type: 'info', title: 'Redirected to your workspace.', description: redirectReason });
+    }
+  }, [user.key, router, pathname, toast]);
+
+  // Prevent rendering restricted text or UI for these roles
+  if (!user.key || !['admin'].includes(user.key)) { // Assuming only admin can access matching
+    return null;
+  }
 
   const comparedItems = useMemo(() => items.map((item) => ({ item, result: evaluateWorkflowMatch(item) })), [items]);
   const matchedCount = comparedItems.filter((row) => row.result.status === 'Matched').length;

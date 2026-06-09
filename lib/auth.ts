@@ -50,7 +50,7 @@ export const demoUsers: DemoUser[] = [
     level: 'L1',
     title: 'Approves invoices up to INR 10,000',
     scope: 'Can approve, reject, or hold invoices routed to L1 only.',
-    nav: ['/', '/approvals'],
+    nav: ['/approvals'],
     accent: 'cyan',
   },
   {
@@ -62,7 +62,7 @@ export const demoUsers: DemoUser[] = [
     level: 'L2',
     title: 'Approves invoices from INR 10,001 to INR 1,00,000',
     scope: 'Can approve, reject, or hold invoices routed to L2 only.',
-    nav: ['/', '/approvals'],
+    nav: ['/approvals'],
     accent: 'violet',
   },
   {
@@ -74,7 +74,7 @@ export const demoUsers: DemoUser[] = [
     level: 'L3',
     title: 'Approves invoices above INR 1,00,000',
     scope: 'Can approve, reject, or hold high-value invoices routed to L3 only.',
-    nav: ['/', '/approvals'],
+    nav: ['/approvals'],
     accent: 'amber',
   },
 ];

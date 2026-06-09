@@ -140,11 +140,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   // Redirect from overview/root to invoices as the default workspace
-  useEffect(() => {
-    if (activeUser && pathname === '/') {
-      router.push('/invoices');
-    }
-  }, [activeUser, pathname, router]);
+  // useEffect(() => {
+  //   if (activeUser && pathname === '/') {
+  //     router.push('/invoices');
+  //   }
+  // }, [activeUser, pathname, router]);
 
   function toggleTheme() {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
@@ -163,6 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setActiveUser(user);
     setSelectedRole(user.key);
     toast({ type: 'success', title: 'Role selected', description: `Signed in as ${user.role}.` });
+    router.push(`${user.nav[0]}`);
   }
 
   function logout() {
