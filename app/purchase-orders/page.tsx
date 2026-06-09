@@ -426,6 +426,85 @@ export default function PurchaseOrdersPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function loadDemoPO() {
+    const demoItems: PurchaseOrderLineItem[] = [
+      {
+        id: `demo-line-1-${Date.now()}`,
+        itemNumber: '1',
+        skuCode: 'LAP-001',
+        itemDescription: 'Dell Latitude 5450 Laptop',
+        quantityOrdered: 10,
+        unitPrice: 65000,
+        totalPrice: 650000,
+      },
+      {
+        id: `demo-line-2-${Date.now()}`,
+        itemNumber: '2',
+        skuCode: 'MON-002',
+        itemDescription: 'Dell 24 Inch Monitor',
+        quantityOrdered: 15,
+        unitPrice: 12000,
+        totalPrice: 180000,
+      },
+      {
+        id: `demo-line-3-${Date.now()}`,
+        itemNumber: '3',
+        skuCode: 'KEY-003',
+        itemDescription: 'Wireless Keyboard and Mouse Combo',
+        quantityOrdered: 20,
+        unitPrice: 2500,
+        totalPrice: 50000,
+      },
+    ];
+
+    // Find a specific vendor from the Vendor Master (searching for '006' pattern)
+    const vendor = demoData.vendors.find((v) => v.id.includes('006')) || demoData.vendors[0];
+
+    setDraft((current) => ({
+      ...current,
+      poNumber: 'PO-2001',
+      poDate: '2026-05-18',
+      intendedDeliveryDate: '2026-05-18',
+      expectedDeliveryDate: '2026-05-18',
+      // Populate vendor fields from the master data list instead of hardcoded values
+      vendorId: vendor?.id || '',
+      vendorName: vendor ? (vendor.displayName || vendor.legalName) : '',
+      vendorContactNumber: vendor?.primaryContactPhone || '',
+      vendorEmail: vendor?.primaryContactEmail || '',
+      vendorGstDetails: vendor?.gstin || '',
+      vendorReferenceId: vendor?.id || '',
+      vendorAddress: vendor ? vendorAddress(vendor) : '',
+      paymentTerms: vendor?.paymentTermsDays ? `Net ${vendor.paymentTermsDays}` : 'Net 30',
+      gstRate: 18,
+
+      companyName: 'ProcureFlow X Pvt Ltd',
+      departmentName: 'Procurement Department',
+      billingAddress: 'Finance Tower, Mumbai, Maharashtra 400001',
+      shippingAddress: 'Central Warehouse, Bhiwandi, Maharashtra 421302',
+      deliveryChallanNumber: 'DC-5001',
+      deliveryChallanDate: '2026-05-18',
+      grnReference: 'GRN-3001',
+      grnDate: '2026-05-20',
+      costCenter: 'PROCUREMENT-001',
+      items: demoItems,
+      subtotal: 880000,
+      taxAmount: 158400,
+      gstDetails: 'GST 18%',
+      discount: 10000,
+      finalTotalAmount: 1028400,
+      status: 'Draft',
+    }));
+
+    setPoUploadFile('');
+    setErrors([]);
+    setFieldErrors({});
+    toast({
+      type: 'success',
+      title: 'Demo PO Loaded',
+      description: `Realistic procurement data populated for ${vendor?.displayName || 'Demo Vendor'}.`,
+    });
+  }
+
   function deletePo(po: PurchaseOrder) {
     remove(po.id);
     toast({ type: 'warning', title: 'PO Deleted', description: `${po.poNumber} was removed from PO management.` });
@@ -452,7 +531,7 @@ export default function PurchaseOrdersPage() {
             onChange={setActiveView}
             options={[
               { value: 'create', label: editingId ? 'Edit PO' : 'Create PO', icon: <FileText size={14} /> },
-              { value: 'list', label: 'PO register', icon: <ListChecks size={14} /> },
+              { value: 'list', label: 'Registered PO', icon: <ListChecks size={14} /> },
             ]}
           />
         }
@@ -578,6 +657,9 @@ export default function PurchaseOrdersPage() {
           {errors.length > 0 && <div className="grid gap-2 sm:grid-cols-2">{errors.map((error) => <div key={error} className="rounded-lg border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">{error}</div>)}</div>}
 
           <div className="flex flex-wrap gap-3">
+            <button type="button" onClick={loadDemoPO} className="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/15">
+              <RefreshCw size={16} /> Load Demo PO
+            </button>
             <button type="button" onClick={validateDraft} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-white/10"><CheckCircle2 size={16} /> Validate PO</button>
             <button type="button" onClick={handleClearForm} className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"><RotateCcw size={16} /> Clear All</button>
             <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"><Save size={16} /> {editingId ? 'Update PO' : 'Save PO'}</button>

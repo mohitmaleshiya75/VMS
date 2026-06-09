@@ -30,7 +30,7 @@ const phaseLinks = [
   { phase: 'Admin', title: 'User management', href: '/users', icon: UsersRound },
   { phase: 'Phase 1', title: 'Vendor PO/GRN/Invoice data', href: '/vendors', icon: Truck },
   { phase: 'Phase 2', title: 'Invoice processing', href: '/invoices', icon: FileText },
-  { phase: 'Phase 3', title: '3-way matching', href: '/matching', icon: GitBranch },
+  { phase: 'Phase 3', title: '3-way Matching', href: '/matching', icon: GitBranch },
   { phase: 'Phase 4', title: 'Approval workflow', href: '/approvals', icon: ShieldCheck },
   { phase: 'Phase 5/6', title: 'Payment and post-payment', href: '/payments', icon: WalletCards },
 ];
