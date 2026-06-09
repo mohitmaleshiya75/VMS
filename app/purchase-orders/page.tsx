@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Badge, Panel, SegmentedControl } from '@/components/ui';
 import { useToast } from '@/components/toast';
@@ -117,6 +118,8 @@ function vendorAddress(vendor: Vendor) {
 
 export default function PurchaseOrdersPage() {
   const user = useDemoUser();
+  const router = useRouter();
+  const pathname = usePathname();
   const toast = useToast();
   const { items, save, remove, reset } = usePurchaseOrders();
   const [activeView, setActiveView] = useState<PurchaseOrderView>('create');
@@ -304,6 +307,41 @@ export default function PurchaseOrdersPage() {
     });
   }, [draftAutoSaveKey, draft, poUploadFile, editingId]);
 
+  useEffect(() => {
+    const currentUserRole = user.key;
+
+    // Roles allowed on this page: 'procurement_specialist', 'admin'
+    if (currentUserRole === 'admin') {
+      return; // User is allowed, do nothing.
+    }
+
+    // User is not allowed, redirect based on their role
+    let redirectPath = '/'; // Default fallback
+    let redirectReason = 'You do not have access to Purchase Order management.';
+
+    switch (currentUserRole) {
+      case 'l1':
+      case 'l2':
+      case 'l3':
+        redirectPath = '/approvals';
+        redirectReason = 'You have been redirected to your Approval Queue.';
+        break;
+      case 'finance':
+        redirectPath = '/vendors/approval';
+        redirectReason = 'You have been redirected to the Vendor Approval page.';
+        break;
+    }
+
+    if (user.key && pathname !== redirectPath) { // Only redirect if not already on the target page
+      router.replace(redirectPath);
+      toast({ type: 'info', title: 'Redirected to your workspace.', description: redirectReason });
+    }
+  }, [user.key, router, pathname, toast]);
+
+  // Prevent rendering the UI for restricted roles during redirect
+  if (!user.key || !['procurement_specialist', 'admin'].includes(user.key)) {
+    return null;
+  }
 
   function updateLine(id: string, patch: Partial<PurchaseOrderLineItem>) {
     setDraft((current) => ({
